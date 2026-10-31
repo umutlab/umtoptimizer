@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>UMToptimizer</AssemblyName>
+    <RootNamespace>UMToptimizer</RootNamespace>
+    <ApplicationIcon>Assets\UMToptimizer.ico</ApplicationIcon>
+    <StartupObject>UMToptimizer.Program</StartupObject>
+    <Version>0.1.0</Version>
+    <Authors>UMToptimizer contributors</Authors>
+    <Description>Windows and Android ADB optimization control center</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\Android\*.bat" />
+    <EmbeddedResource Include="Resources\Windows\*.ps1" />
+    <Resource Include="Assets\UMToptimizer.ico" />
+    <None Include="Assets\UMToptimizer.svg" />
+  </ItemGroup>
+</Project>
