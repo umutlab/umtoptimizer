@@ -1,0 +1,32 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Test + publish + setup
+        shell: powershell
+        run: .\build.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UMToptimizer-Setup
+          path: dist/*.exe
