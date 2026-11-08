@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks> <!-- LibraryImport (AttachConsole) kaynak üretici gereği -->
+    <RootNamespace>UMToptimizer</RootNamespace>
+    <StartupObject>UMToptimizer.Program</StartupObject>
+    <ApplicationIcon>Assets\UMToptimizer.ico</ApplicationIcon>
+    <Version>3.0.0</Version>
+    <Authors>UMToptimizer contributors</Authors>
+    <Description>Windows ve Android (ADB) optimizasyon kontrol merkezi</Description>
+    <!-- WPF Fluent (ThemeMode) API'si .NET 10'da hâlâ "experimental" işaretli. -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+    <SatelliteResourceLanguages>tr;en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!-- dotnet publish -c Release: .NET runtime gerektirmeyen tek dosya exe -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\**\*.bat;Resources\**\*.ps1" LogicalName="%(Filename)%(Extension)" />
+    <Resource Include="Assets\UMToptimizer.ico" />
+    <InternalsVisibleTo Include="UMToptimizer.Tests" />
+  </ItemGroup>
+</Project>

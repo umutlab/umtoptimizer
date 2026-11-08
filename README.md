@@ -4,217 +4,260 @@
 [![Version](https://img.shields.io/github/v/release/umutlab/umtoptimizer?style=for-the-badge&label=VERSION)](https://github.com/umutlab/umtoptimizer/releases/latest)
 [![License](https://img.shields.io/github/license/umutlab/umtoptimizer?style=for-the-badge&label=LICENSE)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/umutlab/umtoptimizer?style=for-the-badge&label=STARS)](https://github.com/umutlab/umtoptimizer/stargazers)
+[![Build](https://img.shields.io/github/actions/workflow/status/umutlab/umtoptimizer/build.yml?branch=main&style=for-the-badge&label=BUILD)](https://github.com/umutlab/umtoptimizer/actions/workflows/build.yml)
 
-# UMToptimizer
+# UMToptimizer 3
 
 UMToptimizer Web : https://umtoptimizer.vercel.app
 
-<img src="UMToptimizer-Source/umtoptimizer-main.png" alt="UMToptimizer uygulama arayüzü" width="850">
+<img src="docs/screenshot.png" alt="UMToptimizer 3 arayüzü — Android profilleri" width="850">
 
-**Windows masaüstü arayüzünden ve komut satırından Windows ve Android profillerini yöneten açık kaynaklı C# uygulaması.**
+**Windows ve Android (ADB) için açık kaynak optimizasyon kontrol merkezi.**
+Baştan yazılmış, test edilmiş ve güvenlik denetiminden geçmiş sürüm.
 
 [İndir](https://github.com/umutlab/umtoptimizer/releases) · [Kaynak kod](https://github.com/umutlab/umtoptimizer) · [Sorun bildir](https://github.com/umutlab/umtoptimizer/issues)
 
 </div>
 
-> **Uyarı:** UMToptimizer Windows ve Android ayarlarını değiştirebilir. Bazı işlemler uygulama, dosya veya ağ ayarlarını etkileyebilir ve tam olarak geri alınamayabilir. Her cihazda aynı sonuç alınmaz; FPS, pil ömrü veya performans artışı garanti edilmez. Bir profili çalıştırmadan önce önizlemesini ve risk uyarılarını okuyun.
+> ⚠️ Bu araç sistem ayarlarını değiştirir. Her uygulamadan önce otomatik yedek alır ve tek tıkla geri yükleme sunar; yine de **Agresif** Windows profili bazı uygulamaları kalıcı olarak kaldırır. Uygulamadan önce açıklamaları okuyun.
+
+---
 
 ## İçindekiler
+1. [Kurulum](#kurulum)
+2. [Ne yapar?](#ne-yapar)
+3. [Sürüm 3'te neler değişti?](#sürüm-3te-neler-değişti)
+4. [Orijinal kodda bulunan hatalar](#orijinal-kodda-bulunan-hatalar)
+5. [Güvenlik denetimi](#güvenlik-denetimi)
+6. [Kod incelemesi](#kod-incelemesi)
+7. [Testler](#testler)
+8. [Arayüz ve erişilebilirlik](#arayüz-ve-erişilebilirlik)
+9. [Mimari](#mimari)
+10. [Komut satırı](#komut-satırı)
+11. [Derleme](#derleme)
+12. [Veriler nerede tutulur?](#veriler-nerede-tutulur)
+13. [Bilinen sınırlamalar](#bilinen-sınırlamalar)
 
-- [Uygulama hakkında](#uygulama-hakkında)
-- [Özellikler](#özellikler)
-- [Nasıl çalışır?](#nasıl-çalışır)
-- [Windows profilleri](#windows-profilleri)
-- [Android profilleri](#android-profilleri)
-- [Android cihazı bağlama](#android-cihazı-bağlama)
-- [Geri yükleme ve günlükler](#geri-yükleme-ve-günlükler)
-- [Kurulum ve çalıştırma](#kurulum-ve-çalıştırma)
-- [Komut satırı](#komut-satırı)
-- [Kaynak koddan derleme](#kaynak-koddan-derleme)
-- [Proje yapısı](#proje-yapısı)
-- [Kapsam ve güvenlik sınırları](#kapsam-ve-güvenlik-sınırları)
-- [Lisans](#lisans)
+---
 
-## Uygulama hakkında
+## Kurulum
 
-UMToptimizer, Windows bilgisayardan Windows ayarlarını yönetmek ve ADB üzerinden bağlı Android cihaza profil komutları göndermek için geliştirilmiş bir masaüstü uygulamasıdır. WPF arayüzü ve komut satırı aynı profil kataloğunu kullanır. Android profilleri uygulamaya gömülü `.bat` kaynaklarından, Windows profilleri ise gömülü PowerShell betiğinden çalıştırılır.
+`UMToptimizer-Setup-3.0.0.exe` dosyasını çalıştırın.
 
-Uygulama, Android cihazı hızlandırmayı veya pil ömrünü belirli bir oranda artırmayı vaat etmez. Profil açıklamaları, betiklerin neyi denemek üzere hazırlandığını anlatır. Komutların cihaz tarafından kabul edilmesi ve gerçek etkisi Android sürümüne, üretici yazılımına, donanıma ve kullanıcı izinlerine bağlıdır.
+- **.NET kurulu olması gerekmez.** Uygulama self-contained tek bir exe olarak paketlenir.
+- **"Yalnızca benim için"** seçilirse yönetici izni istenmez; "tüm kullanıcılar" seçilirse istenir.
+- Kurulumda isteğe bağlı olarak **Android Platform Tools (ADB)** resmi Google sunucusundan indirilir.
+- Windows 10 1809 ve üzeri, x64.
 
-## Özellikler
+> Setup imzalı değildir; Windows SmartScreen "bilinmeyen yayımcı" uyarısı gösterebilir. "Ek bilgi → Yine de çalıştır" ile devam edebilirsiniz.
 
-- Koyu kontrol merkezi arayüzü: **Genel Bakış**, **Windows**, **Android ADB** ve **Geri Yükleme** bölümleri.
-- Arayüz ve CLI tarafından paylaşılan tek profil kataloğu.
-- Profil uygulanmadan önce değişiklik özeti ve uyarıların gösterilmesi; arayüzde ayrıca kullanıcı onayı.
-- Android profil önizlemesinde kaynak betiğin komut satırlarının gösterilmesi.
-- Hafif renk geçişleriyle oluşturulmuş liquid-glass görünümü; kısa sayfa, tıklama ve açılır menü animasyonları.
-- Blur, shader veya sürekli çalışan animasyon döngüsü kullanmayan arayüz.
-- EXE ve uygulama penceresi için çok çözünürlüklü UMToptimizer “U” simgesi.
-- Uygulama açılışında ADB'nin uygulama klasöründe, Android SDK konumlarında ve `PATH` içinde aranması.
-- Android sayfasında **adb.exe seç** ile ADB konumunu elle gösterme ve seçimi saklama.
-- USB hata ayıklama yetkilendirme durumunun, ADB yenileme hatalarının ve bağlı cihazların arayüzde gösterilmesi.
-- Uygulama açık kaldığı sürece cihazların yaklaşık beş saniyede bir taranması; yeni USB bağlantısında cihaz listesinin güncellenmesi.
-- Son işlem bilgisinin `%LOCALAPPDATA%\UMToptimizer\last-change.json` dosyasına kaydedilmesi.
-- Android profil komutlarının canlı akış olarak görüntülenmesi ve ayrıntılı işlem günlüğü.
-- Profil bittikten sonra kullanıcı onayıyla cihazı yeniden başlatma seçeneği.
-- Windows Standard ve Agresif (Performans) profillerinin yönetici izniyle çalıştırılması.
+---
 
-## Nasıl çalışır?
+## Ne yapar?
 
-### Arayüz üzerinden
+### Windows profilleri
+| Profil | Özet |
+|---|---|
+| **Standart** (önerilen) | Telemetri, etkinlik geçmişi, konum ve tüketici özelliklerini kapatır; DiagTrack/WerSvc gibi hizmetleri sınırlar; geçici dosyaları temizler; hazırda bekletmeyi kapatır. |
+| **Agresif** | Standart'ın tamamı + animasyon/bildirim azaltma, IPv6/Teredo kapatma, Edge/Brave politikaları, Copilot/Recall, Edge/OneDrive ve isteğe bağlı uygulamaları kaldırma, Adobe hosts engelleme listesi. |
 
-1. **Windows** veya **Android ADB** bölümünü açın.
-2. İlgili profili seçin ve gösterilen açıklama, değişiklik özeti ve risk uyarılarını okuyun.
-3. Android için bağlı ve yetkilendirilmiş cihazı seçin. Profil önizlemesinde komutları inceleyin.
-4. Profil uygulama onayını verin. Windows profilleri yönetici izni ve betiğin kendi ek onaylarını isteyebilir.
-5. Android çalışırken komut akışını ve sonuçları uygulama ekranından takip edin. İşlem bitince isterseniz cihazı ayrıca yeniden başlatın.
+Her ikisi de önce **kayıt defteri + hizmet + IPv6 + Defender + ayrılmış depolama yedeği** alır, isteğe bağlı olarak Sistem Geri Yükleme noktası oluşturur.
 
-Android'de uygulama seçilen cihazın seri numarasını işlem boyunca kullanır. Böylece komutlar başlatıldıktan sonra başka cihaz bağlansa bile hedef cihaz değişmez. Profil satırlarından bazıları başarısız olursa kalan satırlar yine çalıştırılabilir; sonuç kısmen uygulanmış olabilir.
+### Android profilleri (ADB)
+Balanced (1.447 komut), Extra Boost, Hardware, Lite PS, Power Saving, Qualcomm only, Vulkan, Compile.
+Komutların **%95'ten fazlası** (`settings`, `setprop`, `device_config`) uygulama öncesi değerleri yedeklendiği için **geri alınabilir**.
 
-### Komut satırı üzerinden
+---
 
-Uygulama `--help` ile komutları listeler. CLI'da profili uygulama komutları için `--yes` parametresi açıkça verilmelidir. Bu parametre kullanıcı onayını komut satırında geçirir; profilin etkilerini veya risklerini azaltmaz. Önce `preview` komutunu çalıştırıp sonucu inceleyin.
+## Sürüm 3'te neler değişti?
 
-## Windows profilleri
+| Konu | Sürüm 1–2 | Sürüm 3 |
+|---|---|---|
+| Android hızı | Her komut için ayrı `adb.exe` süreci (Balanced ≈ 1.500 süreç) | Tüm profil **tek** `adb shell` oturumunda |
+| Android geri alma | Yok ("otomatik geri alınamaz") | Değişen her ayarın ilk değeri 5 komutla yedeklenir, tek tıkla geri yüklenir |
+| Cihaz algılama | 5 sn'de bir yoklama | `adb track-devices` akışı (anında, süreç açmadan) |
+| ADB kurulumu | Kullanıcı elle kurar | Uygulama veya setup resmi paketi tek tıkla indirir |
+| Windows betiği | Ayar listesi ile yedek listesi ayrı ayrı elle yazılmış | Tek tablo; yedek ve geri yükleme bu tablodan **türetilir** |
+| Windows çalıştırma | Görünür PowerShell penceresinde sorular | Arka planda; seçenekler arayüzde, günlük canlı akar |
+| Arayüz | ~600 satır C# ile elle kurulan kontroller | XAML + Windows 11 Fluent tema (Mica, açık/koyu) |
+| Testler | Yok | 46 xUnit testi + 26 PowerShell betik kontrolü |
+| Dağıtım | .NET runtime gerektiren zip | Tek setup.exe, runtime gömülü |
 
-Windows profilleri `Resources\Windows\UMToptimizer-Windows.ps1` dosyasındaki betik kullanılarak çalışır. Profil seçildikten sonra uygulama değişiklik özetini sunar ve onay ister. Betik ayrı PowerShell sürecinde yönetici izniyle çalışır ve bazı işlemler için kendi ek onaylarını gösterebilir.
+**Kod miktarı:** C# arayüz kodu 586 → ~210 satır. Toplam kod yeni özelliklere rağmen yaklaşık %15 daha kısa.
 
-### Standard
+---
 
-Günlük kullanıma yönelik, Windows gizlilik ve sistem davranışı ayarlarını düzenleyen profildir. Betik sürümüne göre telemetri, etkinlik geçmişi, konum ve harita davranışı, bazı arka plan özellikleri ve hizmetler değiştirilebilir. Geçici dosyalar temizlenir ve hazırda bekletme kapatılır. Bazı Dosya Gezgini/Store davranışları ve Defender örnek gönderme ayarı da düzenlenebilir.
+## Orijinal kodda bulunan hatalar
 
-Betik kayıt defteri ve hizmet ayarlarını yedeklemeye ve mümkünse Sistem Geri Yükleme noktası oluşturmaya çalışır. Geçici dosyalar ve bazı önbellekler silindiğinden bu işlemlerin tamamı geri getirilemez. BitLocker ile ilgili işlem ayrı kurtarma anahtarı onayı gerektirebilir; anahtar bilinmiyorsa devam etmeyin.
+Orijinal kaynak satır satır okunarak bulundu; hepsi sürüm 3'te düzeltildi.
 
-### Agresif (Performans)
+1. **Cihaz listesi büyük olasılıkla hiç dolmuyordu.** `adb devices -l` alanları boşlukla ayırır; kod sekme karakteri arıyordu. (Test: `DevicesLong_SpaceSeparated_IsParsed`)
+2. **IPv6 ayarları yedeklenmiyordu.** Yedek hesaplanıyor ama `backup.json`'a yazılmıyordu; geri yükleme IPv6'yı hiç geri getirmiyordu.
+3. **Hazırda bekletme yanlışlıkla kapatılabiliyordu.** Geri yüklemede yedekte değer yoksa hazırda bekletme açılmak yerine kapatılıyordu.
+4. **Yedek listesi uygulanan ayarlarla uyuşmuyordu.** Yanlış yollar (`Policies\Microsoft\BraveSoftware`, `ControlSet001`) ve onlarca tekrar satır vardı.
+5. **İkinci uygulama yedeği eziyordu.** Geri yükleme orijinal hâle değil, zaten değiştirilmiş hâle dönüyordu.
+6. **Bir komut her zaman başarısız oluyordu.** `Power_Saving` profilinde tamamı tek tırnakla sarılmış satır vardı. Balanced'da da 49 tekrar komut vardı.
+7. **Hosts listesi her çalıştırmada tekrar ekleniyordu** ve geri yüklemede kaldırılmıyordu.
+8. **Ölü kod vardı:** güç planı ve tekil Android ayarı akışları hiç kullanılmıyordu.
 
-Standart profilin değişikliklerine ek olarak daha geniş Windows arayüzü, ağ, tarayıcı ve isteğe bağlı bileşen ayarlarını değiştirmeyi dener. Kaynak betikte IPv6/Teredo, bildirimler, arama ve arka plan davranışları, tarayıcı ilkeleri ve seçili Windows hizmetleriyle ilgili değişiklikler bulunur. OneDrive, Edge, Copilot/AI bileşenleri veya seçili isteğe bağlı uygulamaların kaldırılması denenebilir. Edge profili silinebilir. Betik çevrimiçi bir Adobe alan adı listesini `hosts` dosyasına ekleyip DNS önbelleğini temizleyebilir.
+---
 
-Bu işlemler ağ bağlantısını, VPN'i, tarayıcıları, bildirimleri veya üretici araçlarını etkileyebilir. Kaldırılan uygulamalar, silinen profil verileri ve dosyalar yedekleme/geri yükleme ile geri gelmeyebilir. `hosts` dosyasına eklenen satırların eksiksiz geri alınacağı garanti edilmez. Agresif profilin performans artışı garanti edilmez.
+## Güvenlik denetimi
 
-## Android profilleri
+Masaüstü uygulamasının saldırı yüzeyi incelendi: yönetici olarak çalışan betik, ADB komut üretimi, indirmeler ve diskteki yedek dosyaları.
 
-Android profilleri ADB ile bağlı telefona gönderilir. Kaynak betiklerdeki komutlar üreticiye ve Android sürümüne göre reddedilebilir, yok sayılabilir veya kısmen uygulanabilir. Profil isimleri ve açıklamaları betiklerin hedefini anlatır; tüm Android cihazlarda aynı davranışı garanti etmez.
+| # | Önem | Açık | Düzeltme | Test |
+|---|---|---|---|---|
+| G1 | **Yüksek: yerel yetki yükseltme** | `%ProgramData%` altında standart kullanıcılar klasör oluşturup **sahibi** olabilir (`BUILTIN\Users:(CI)(WD,AD)`). Saldırgan `UMToptimizer` klasörünü önceden oluşturup sahte bir `backup.json` bırakırsa, yönetici "Geri yükle"ye bastığında betik saldırganın seçtiği HKLM değerlerini (ör. hizmet `ImagePath`) yazar. Junction/symlink ile de keyfi dosyaya yazdırılabilir. | (1) Her çalıştırmada klasördeki bağlantılar silinir, sahip *Administrators* yapılır, yazma yalnızca SYSTEM/Administrators'a verilir. (2) Geri yükleme bir **beyaz liste** uygular: yalnızca betik tablosundaki anahtar ve hizmetler, yalnızca geçerli değer türleri. | `WindowsScript.Tests.ps1` §4–5: sahte `ImagePath` ve `Spooler` girdisi **yazılmadı** |
+| G2 | **Orta: TOCTOU** | Betik kullanıcının yazabildiği `%TEMP%`'e yazılıp `-File` ile yönetici olarak çalıştırılıyordu. UAC onayı ile çalışma arasında başka bir süreç dosyayı değiştirebilirdi. | Yükseltilmiş PowerShell metni **belleğe** okur, SHA-256'sını exe'ye gömülü özetle karşılaştırır ve yalnızca eşleşirse bellekteki metni çalıştırır. Dosyaya bir daha bakılmaz. | `ElevatedCommand_RejectsTamperedScript`: kurcalanmış betik `exit 3` ile reddedildi, hiç çalışmadı |
+| G3 | **Orta: hosts zehirleme** | Üçüncü taraf GitHub listesi doğrulanmadan sistemin `hosts` dosyasına ekleniyordu. Liste ele geçirilirse `1.2.3.4 banka.com` gibi yönlendirmeler eklenebilirdi. | Yalnızca `0.0.0.0 alan.adi` / `127.0.0.1 alan.adi` engelleme satırları kabul edilir. Blok işaretlerle eklenir ve geri yüklemede kaldırılır. | `WindowsScript.Tests.ps1` §6 |
+| G4 | **Düşük: cihazda komut enjeksiyonu** | Android yedek JSON'undaki anahtar adları cihaz kabuğuna tırnaksız gidiyordu; `x; reboot` gibi bir anahtar komut çalıştırabilirdi. | Anahtar ve ad alanı `[A-Za-z0-9_.:/-]` beyaz listesiyle doğrulanır, değerler her zaman tek tırnakla kaçışlanır. | `RestoreCommand_RejectsUnsafeInput`, `RestoreCommand_ValueInjection_IsQuoted` |
+| G5 | **Düşük: günlük yolu** | `-LogPath` parametresi dışarıdan geliyordu; yönetici betiği herhangi bir yola yazabilirdi. | Yalnızca `%ProgramData%\UMToptimizer\logs\` altı kabul edilir, `..` reddedilir. | `WindowsScript.Tests.ps1` §7 |
+| G6 | **Düşük: yanlış kullanıcı** | Standart kullanıcı başka bir yönetici parolasıyla yükseltirse HKCU/TEMP **yöneticinin** profilini gösterir; ayarlar yanlış hesaba yazılırdı. | Uygulama kendi SID'ini iletir; betik HKCU'yu `HKEY_USERS\<SID>`'e yönlendirir. | `WindowsScript.Tests.ps1` §8 |
 
-| Profil | Hedefi | Dikkat edilmesi gerekenler |
-| --- | --- | --- |
-| **Balanced** | Günlük pil, uygulama ve performans davranışını dengelemeye çalışır; çalışma zamanı, bellek, ağ, güç ve üretici ayarlarını kapsar. | Kaynak betikte Wi-Fi bölge kodunu `JP`, operatör kodlarını `9999` yapmayı deneyen satırlar vardır. Bölgesel ağ davranışını etkileyebilir. |
-| **Extra Boost** | CPU/GPU, çizim ve ekran yenileme davranışını yükseltmeyi dener. | 120 Hz ve frekans gibi cihaza bağlı değerler içerir; ısı ve pil tüketimini artırabilir veya etkisiz kalabilir. |
-| **Hardware** | Donanım bileşimi, GPU çizimi ve video hızlandırma bayraklarını değiştirmeyi dener. | Üretici ve Android sürümüne bağlıdır; grafik/video sorunlarına yol açabilir. |
-| **Lite PS** | Arka plan ve düşük güç davranışlarını düzenleyerek hafif güç tasarrufu hedefler. | Arka plan uygulamalarını veya bildirimleri kısıtlayabilir. |
-| **Power Saving** | Boşta kalma, güç, ağ ve uygulama davranışlarını tasarruf yönünde değiştirmeyi dener. | Ağ ve idle kısıtları bildirimleri, bağlantıyı ve arka plan işlerini etkileyebilir. |
-| **Qualcomm only** | Bazı Qualcomm cihazlarında MDP/görüntü birleştirme bayraklarını değiştirir. | Qualcomm olmayan cihazlarda kullanmayın; Qualcomm cihazlarında da destek üretici yazılımına bağlıdır. |
-| **Vulkan** | Android arayüz çizimini Vulkan/Skia yoluna yönlendirmeyi dener. | Vulkan sürücü desteğine bağlıdır; grafik hatası veya kararsızlık oluşturabilir. |
-| **Compile** | Android'de tüm uygulamalar için `everything` derlemesi/dexopt işlemini başlatır. | Uzun sürebilir ve işlemci, depolama, pil ve sıcaklık üzerinde yük oluşturabilir; otomatik geri alma yoktur. |
+**Kontrol edilip sorun bulunmayanlar:**
+- Kaynakta gömülü parola, anahtar veya token yok.
+- ZIP açarken yol dışına çıkma (zip-slip) yok; .NET `ExtractToDirectory` bunu engelliyor.
+- ADB yalnızca HTTPS ile `dl.google.com`'dan iniyor.
+- Uygulamanın kendisi yönetici olarak çalışmıyor; yalnızca Windows betiği UAC ile yükseltiliyor.
 
-Balanced betiği yaklaşık 1.496 boş olmayan komut satırı içerir. Profilin çok sayıda satır çalıştırması, her ayarın telefon tarafından kabul edildiğini göstermez. Komutlar satır satır denenir; hata veren satırlar ve tam çıktı uygulama günlüğüne yazılır.
+**Kalan risk:** İndirilen `platform-tools` paketi için Google sabit bir özet yayımlamadığından içerik özeti doğrulanmıyor; güven HTTPS'e dayanıyor.
 
-## Android cihazı bağlama
+---
 
-Android Platform Tools içindeki `adb.exe`, Android cihazıyla bilgisayar arasında bağlantı kurar. UMToptimizer ADB'yi uygulama klasöründeki `platform-tools` yolunda, daha önce seçilen yolda, Android SDK konumlarında veya `PATH` içinde arar. `UMTOPT_ADB` ortam değişkeniyle özel bir ADB yolu da belirtilebilir.
+## Kod incelemesi
 
-1. [Android SDK Platform Tools'u indirin](https://developer.android.com/tools/releases/platform-tools) ve ZIP arşivini çıkarın.
-2. Telefonda **Geliştirici seçenekleri** ve **USB hata ayıklama** özelliğini açın.
-3. Telefonu veri aktarabilen USB kablosuyla bağlayıp kilidini açın.
-4. Telefonda görünen RSA/USB hata ayıklama izin penceresini kabul edin.
-5. UMToptimizer içinde **Cihazları yenile** seçeneğini kullanın. ADB bulunamazsa **adb.exe seç** ile `platform-tools\adb.exe` dosyasını gösterin.
-6. Yetkilendirilmiş cihazı listeden seçip profil önizlemesini inceleyin.
+Kod 8 açıdan incelendi: satır satır, kaldırılan davranış, dosyalar arası, tekrar kullanım, sadeleştirme, verimlilik, doğru katman ve kurallar. 10 bulgu çıktı; 9'u düzeltildi.
 
-`adb devices` çıktısında `unauthorized` görünüyorsa telefondaki izin penceresini onaylayın. Cihaz hiç görünmüyorsa USB kablosunu/portunu, USB modunu, telefon sürücülerini ve USB hata ayıklama ayarını kontrol edin. Birden fazla cihaz bağlıysa doğru seri numarasını seçin.
+| Bulgu | Durum |
+|---|---|
+| Android geri yükleme yarıda kesilirse yedek dosyası yine de **siliniyordu** → orijinal değerler kaybolabilirdi | ✅ Yalnızca oturum sonuna kadar tamamlandıysa güncelleniyor; başarısız girdiler saklanıyor |
+| Cihaz erken çıkınca stdin yazımı "pipe ended" atıyor, gerçek hata gizleniyordu | ✅ |
+| Başka hesapla yükseltmede HKCU yanlış kullanıcıya yazılıyordu | ✅ (G6) |
+| Boş (`""`) Android ayarları "yok" sayılıp geri yüklemede siliniyordu | ✅ |
+| `track-devices` stderr'i okunmuyordu, boru dolarsa kilitlenebilirdi | ✅ |
+| Hosts geri yüklemesi dosyayı ASCII yazıp Türkçe karakterleri bozuyordu | ✅ |
+| Kilitli JSON dosyası arayüzü düşürüyordu | ✅ |
+| İşlem sürerken pencere kapanınca kapalı pencereye mesaj gösteriliyordu | ✅ |
+| Kullanılmayan `NotUndoable` alanı | ✅ Kaldırıldı |
+| Rozet, tüm Android betiklerini açılışta yüklüyor | ➖ Ölçüldü: ~120 KB, milisaniyeler; değişiklik gerekmedi |
 
-## Geri yükleme ve günlükler
+**Testlerin yakaladığı ek hata:** PowerShell'de değişken adları büyük/küçük harf duyarsızdır. `Save-Backup` içindeki yerel `$backup` sözlüğü, dosya yolu olan `$Backup` değişkenini eziyordu. Sonuçta yedek `backup.json` yerine çalışma klasöründe `System.Collections.Specialized.OrderedDictionary` adlı bir dosyaya yazılıyordu; yani Windows geri yüklemesi hiç çalışmayacaktı. Testler olmasaydı bu fark edilmezdi.
 
-- Son işlem kaydı: `%LOCALAPPDATA%\UMToptimizer\last-change.json`
-- Uygulama ve Android işlem günlükleri: `%LOCALAPPDATA%\UMToptimizer\logs`
-- ADB için saklanan yol: `%LOCALAPPDATA%\UMToptimizer\adb-path.txt`
-- Windows betiği yedeği: `%ProgramData%\UMToptimizer\backup.json`
-- Windows betiği günlüğü: `%ProgramData%\UMToptimizer\windows-tweaks.log`
+---
 
-Windows geri yükleme, betiğin yedeklediği kayıt defteri ve hizmet ayarlarını geri yüklemeyi dener; tam disk veya sistem imajı geri yüklemesi değildir. Silinen dosyaları, kaldırılmış uygulamaları ve tüm `hosts` değişikliklerini geri getirmez. Android kaynak profilleri için genel ve güvenilir bir geri alma yöntemi yoktur; Geri Yükleme bölümü profilin geri alınabilir olup olmadığını belirtir.
+## Testler
 
-## Kurulum ve çalıştırma
+```powershell
+dotnet test tests\UMToptimizer.Tests                                          # 46 xUnit testi
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\WindowsScript.Tests.ps1   # 26 betik kontrolü
+```
+`build.ps1` ikisini de setup üretmeden önce çalıştırır; biri başarısız olursa setup üretilmez.
 
-GitHub deposunun **Releases** bölümünden Windows ZIP paketini indirin ve ZIP'in tamamını bir klasöre çıkarın. EXE'yi gerekli eşlik eden dosyalarla aynı klasörde tutun. Framework-dependent yayın için Windows'ta **.NET 10 Desktop Runtime** gereklidir. Android profilleri için ayrıca ADB gerekir. Windows profillerini çalıştırırken yönetici izni verin.
+| Dosya | Kapsam |
+|---|---|
+| `tests/UMToptimizer.Tests/CoreTests.cs` | Profillerin yüklenmesi, `adb shell` öneki ve tekrarların ayıklanması, eski CLI takma adları; `adb devices` ayrıştırma (boşluk/sekme/yetkisiz/daemon satırları); geri alınabilir komut tanıma; `settings list`/`getprop`/`device_config` çıktısı ayrıştırma (değerde `=`, `]` ile biten değer, boş değer); geri yükleme komutu üretimi ve **enjeksiyon reddi**; yükseltilmiş komutun SHA-256 sabitlemesi ve **kurcalanmış betiğin gerçek PowerShell'de reddedilmesi** |
+| `tests/WindowsScript.Tests.ps1` | Betiği gerçek sisteme dokunmadan, yalnızca `HKCU:\Software\UMToptimizerTest` ve geçici bir klasörle çalıştırır: yedek → uygula → ikinci yedek ezilmez → kurcalanmış yedek → geri yükle (DWord/Binary/olmayan değer/olmayan anahtar) → hosts filtresi → günlük yolu doğrulaması → HKCU yönlendirmesi |
 
-Bir uygulamanın GitHub'da kaynak kodunun bulunması, indirdiğiniz EXE'nin o kaynak koddan üretildiğini tek başına kanıtlamaz. Sürüm etiketini ve yayın notlarını inceleyin; isterseniz aşağıdaki adımlarla kaynağı kendiniz derleyin.
+Ayrıca elle doğrulananlar:
+- Setup sessiz kurulum, kurulu exe'nin çalışması, Başlat menüsü kısayolu ve kaldırmanın her şeyi temizlemesi.
+- Gerçek `adb` ile cihaz listesi.
+- Uygulama içinden ADB indirme ve açma.
+- UI Automation ile sayfa geçişleri, Ctrl+1..4 kısayolları ve erişilebilir adlar.
+
+---
+
+## Arayüz ve erişilebilirlik
+
+- **Windows 11 Fluent tema:** sistem açık/koyu temasını izler, Mica arka plan. Özel kontrol şablonu yerine temanın kendi renk anahtarları kullanılır.
+- **Klavye:** `Ctrl+1` Genel bakış, `Ctrl+2` Windows, `Ctrl+3` Android, `Ctrl+4` Geri yükleme. Açılışta odak gezinmede.
+- **Ekran okuyucu:** simge düğmeleri, listeler, cihaz seçici ve günlük için `AutomationProperties.Name` tanımlı. İşlem durumu ve ADB durumu `LiveSetting=Polite` ile duyurulur.
+- **Güvenli onay:** riskli işlemlerde varsayılan düğme **Hayır**; yanlışlıkla Enter'a basmak sistemi değiştirmez.
+- **Geri bildirim:** ortak işlem paneli (ilerleme çubuğu ve canlı günlük) ile görev çubuğu ilerlemesi. İşlem sürerken eylem düğmeleri kilitlenir.
+- **Durum tek yerde:** ADB, cihaz ve yedek durumları tek bir `Refresh()` fonksiyonundan güncellenir.
+
+---
+
+## Mimari
+
+```
+src/UMToptimizer/
+  Program.cs               Argüman yoksa arayüzü, varsa komut satırını başlatır
+  App.xaml(.cs)            Fluent tema, ortak stiller (kart, uyarı, gezinme, profil kartı)
+  MainWindow.xaml(.cs)     Arayüz; detay panelleri seçili profile XAML ile bağlı
+  Core/
+    Profiles.cs            Tek profil kaydı + katalog; Android komutları ilk erişimde yüklenir
+    Adb.cs                 ADB bulma/indirme, track-devices, tek oturumda uygulama, ilk-değer yedeği, geri yükleme
+    WindowsTweaks.cs       Hash doğrulamalı yükseltilmiş çalıştırma, günlüğü canlı izleme
+    Store.cs               Yollar, JSON okuma/yazma, süreç çalıştırıcı
+    Cli.cs                 Komut satırı (pattern matching)
+  Resources/
+    Windows/UMToptimizer-Windows.ps1   Tablo tabanlı Windows profilleri (tek kaynak)
+    Android/*.bat                      Orijinal Android profilleri (değiştirilmedi)
+tests/
+  UMToptimizer.Tests/      xUnit
+  WindowsScript.Tests.ps1  Betik testleri
+installer/UMToptimizer.iss Inno Setup betiği
+build.ps1                  Test → publish → setup
+```
+
+**Android uygulama akışı:**
+1. Tek oturumda `settings list global|system|secure`, `getprop` ve `device_config list` okunur.
+2. Profilin değiştireceği her anahtarın **ilk** değeri `android\<seri>.json`'a yazılır. Daha önce kaydedilmiş anahtarların üzerine yazılmaz.
+3. Profil tek `adb shell` oturumunda çalışır. Her komut `</dev/null` ile çalıştırılır, böylece betiğin geri kalanını okuyup tüketemez. Başarısızlar `@@F<n>` işaretiyle raporlanır.
+4. Cihazın reddettiği komutların yedekleri silinir; zaten hiçbir şeyi değiştirmemişlerdir.
+
+---
 
 ## Komut satırı
 
-PowerShell veya Komut İstemi'ni uygulamanın bulunduğu klasörde açın. Aşağıdaki örneklerde `DEVICE_ID` yerine `adb devices` çıktısındaki gerçek seri numarasını yazın.
+```
+UMToptimizer profiles
+UMToptimizer windows apply <standard|aggressive> --yes [--restore-point] [--allow-bitlocker]
+UMToptimizer windows restore --yes
+UMToptimizer android devices
+UMToptimizer android preview <profil>
+UMToptimizer android apply <profil> [--serial ID] --yes
+UMToptimizer android restore [--serial ID]
+UMToptimizer android install-adb
+```
+Sistemi değiştiren her komut `--yes` olmadan çalışmaz; yalnızca ne yapacağını gösterir.
+
+---
+
+## Derleme
 
 ```powershell
-# Kullanım bilgisini göster
-UMToptimizer.exe --help
-
-# Bağlı Android cihazları listele
-UMToptimizer.exe android devices
-
-# Profil değişikliklerini önizle
-UMToptimizer.exe windows preview performance
-UMToptimizer.exe android preview balanced
-
-# Önizlemeyi inceledikten sonra profili uygula
-UMToptimizer.exe windows apply performance --yes
-UMToptimizer.exe android apply balanced --serial DEVICE_ID --yes
-
-# Geri yüklemeyi dene
-UMToptimizer.exe restore windows
-UMToptimizer.exe restore android --serial DEVICE_ID
+winget install Microsoft.DotNet.SDK.10 JRSoftware.InnoSetup   # bir kez
+.\build.ps1                    # test → publish → dist\UMToptimizer-Setup-3.0.0.exe
+.\build.ps1 -Version 2.1.0     # farklı sürüm
 ```
 
-Android profil adları: `balanced`, `extra-boost`, `hardware`, `lite-ps`, `power-saving`, `qualcom-only`, `vulkan`, `compile`. Windows profil adları CLI yardımında `balanced` ve `performance` olarak listelenir. Android kullanımı için USB hata ayıklama yetkisi verilmiş cihaz ve `adb.exe` gerekir. `--yes`, uygulama onayını komut satırında geçirir; komutları gözden geçirme sorumluluğunu ortadan kaldırmaz.
+---
 
-## Kaynak koddan derleme
+## Veriler nerede tutulur?
 
-Gereksinimler: Windows ve .NET 10 SDK. Visual Studio kullanılıyorsa **.NET desktop development** iş yükü kurulabilir.
+| Ne | Nerede |
+|---|---|
+| Android ilk-değer yedekleri | `%LOCALAPPDATA%\UMToptimizer\android\<seri>.json` |
+| İndirilen ADB | `%LOCALAPPDATA%\UMToptimizer\platform-tools` |
+| Android günlükleri | `%LOCALAPPDATA%\UMToptimizer\logs` |
+| Windows yedeği ve günlükleri | `%ProgramData%\UMToptimizer` (yalnızca yöneticiler yazabilir) |
 
-`UMToptimizer.csproj` dosyasının bulunduğu kaynak dizininde çalıştırın:
+Program kaldırıldığında bu veriler bilerek silinmez; yeniden kurup geri yükleme yapabilirsiniz.
 
-```powershell
-dotnet restore .\UMToptimizer.csproj
-dotnet build .\UMToptimizer.csproj -c Release
-dotnet publish .\UMToptimizer.csproj -c Release -p:UseAppHost=true
-```
+---
 
-Yayımlama çıktısı `bin\Release\net10.0-windows\publish\` altında oluşur. Bu framework-dependent paketi çalıştırmak için .NET 10 Desktop Runtime gerekir. Tek dosyalı, kendi kendine çalışan `win-x64` EXE üretmek için ağ bağlantısı olan geliştirme makinesinde aşağıdaki komut kullanılabilir:
+## Bilinen sınırlamalar
 
-```powershell
-dotnet publish .\UMToptimizer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
-```
+Dürüstlük için: aşağıdakiler henüz **gerçek ortamda uçtan uca** test edilmedi.
 
-Tek dosya yayımlama biçimi kaynak proje ayarlarına ve .NET SDK sürümüne göre farklı ek çıktılar üretebilir; dağıtımdan önce publish klasörünün tamamını kontrol edin.
+- **Android profil uygulama ve geri yükleme gerçek bir telefonda denenmedi.** Ayrıştırma ve komut üretimi birim testlerle doğrulandı. Uygulama testleri sırasında bağlı cihaz yoktu.
+- **Windows profillerinin yönetici olarak tam çalışması denenmedi**, çünkü test bilgisayarının ayarlarını değiştirirdi. Yedek, uygulama ve geri yükleme mantığı test anahtarında doğrulandı. Hizmetler, AppX kaldırma, DISM gibi yönetici gerektiren adımlar yalnızca kod incelemesinden geçti.
+- **Bazı adımlar geri alınamaz:** kaldırılan uygulamalar (Edge, OneDrive vb.), silinen geçici dosyalar, Explorer klasör görünümü önbelleği ve Android `pm compile`.
+- **Setup imzalı değil.**
 
-## Proje yapısı
-
-```text
-UMToptimizer-Source/
-├── App.xaml / App.xaml.cs             # WPF uygulama başlangıcı
-├── MainWindow.xaml                    # Ana pencere arayüzü
-├── MainWindow.xaml.cs                 # Sayfalar ve kullanıcı etkileşimleri
-├── Program.cs                         # GUI ve CLI başlangıcı
-├── Models/                            # Profil, cihaz ve işlem modelleri
-├── Services/
-│   ├── CliRunner.cs                   # Komut satırı komutları
-│   ├── OptimizerService.cs             # Profil çalıştırma ve ADB keşfi
-│   ├── ProcessRunner.cs                # Süreç başlatma ve çıktı akışı
-│   ├── ProfileCatalog.cs               # Profil kataloğu, açıklamalar ve riskler
-│   └── UndoStore.cs                    # Geri yükleme kayıtları
-├── Resources/
-│   ├── Android/*.bat                   # ADB ile telefona gönderilen profiller
-│   └── Windows/UMToptimizer-Windows.ps1 # Windows profil betiği
-├── Assets/                             # Simge ve görsel kaynakları
-└── UMToptimizer.csproj                 # .NET/WPF ve gömülü kaynak ayarları
-```
-
-## Kapsam ve güvenlik sınırları
-
-- Bu proje Windows masaüstü uygulamasıdır. Android profil komutları Windows'ta çalışan ADB üzerinden Android cihaza gönderilir.
-- Kaynak Android `.bat` dosyaları uygulamaya gömülür. Windows uygulaması bu nedenle Android profilinde Windows'a uygun `.bat` kaynaklarını kullanır; özgün indirme klasöründeki dosyaları değiştirmez.
-- Aynı isimli `.sh` dosyalarının kaynak içerikleri incelenen sürümde `.bat` dosyalarıyla aynı komutlara sahipti; bu Windows uygulaması `.bat` kaynaklarını kullanır.
-- Android üretici yazılımı, işletim sistemi sürümü ve güvenlik politikaları komutları reddedebilir veya yok sayabilir. Komutların denenmesi, tüm değişikliklerin başarıyla uygulandığını göstermez.
-- Android profillerinin çoğunda otomatik geri alma yoktur. Özellikle ağ bölgesi, operatör kodu, güç politikası ve derleme komutlarını uygulamadan önce önizlemeyi okuyun.
-- Agresif Windows profili uygulama kaldırabilir ve ağ/hosts ayarlarını değiştirebilir. Tam geri yükleme garantisi yoktur.
-- Bu yazılım belirli bir performans, pil ömrü, sıcaklık veya FPS kazanımı vaat etmez.
+---
 
 ## Lisans
-
-UMToptimizer [MIT Lisansı](LICENSE) altında yayımlanır.
+MIT. Ayrıntılar için [LICENSE](LICENSE).
