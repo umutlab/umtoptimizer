@@ -1,0 +1,65 @@
+name: release
+
+# "v4.0.0" gibi bir etiket gönderildiğinde: test → publish → setup → GitHub Release.
+# Yayımlanan dosyalar geliştirici makinesinden değil, bu depodaki kaynaktan derlenir.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write   # yalnızca sürüm oluşturmak için
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      TAG: ${{ github.ref_name }}   # betiklere ortam değişkeni olarak verilir (komut metnine gömülmez)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Test + publish + setup
+        shell: powershell
+        run: |
+          $version = $env:TAG -replace '^v', ''
+          .\build.ps1 -Version $version   # sürüm biçimini build.ps1 doğrular; testler başarısızsa durur
+
+      - name: Taşınabilir exe + özetler
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:TAG -replace '^v', ''
+          $portable = "dist\UMToptimizer-$version-portable.exe"
+          Copy-Item publish\UMToptimizer.exe $portable
+          $hash = (Get-FileHash $portable -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content "$portable.sha256" "$hash  UMToptimizer-$version-portable.exe" -Encoding ASCII
+          $notes = @(
+            "## UMToptimizer $version", "",
+            "- ``UMToptimizer-Setup-$version.exe``: kurulum sihirbazı",
+            "- ``UMToptimizer-$version-portable.exe``: kurulum gerektirmeyen tek dosya", "",
+            "Dosyalar imzalı değildir; Windows SmartScreen uyarı gösterebilir. .NET kurulu olması gerekmez. Windows 10 1809+, x64.", "",
+            "Neler değişti, güvenlik notları ve bilinen sınırlamalar: [README](https://github.com/$env:GITHUB_REPOSITORY/blob/$env:TAG/README.md)", "",
+            "### SHA-256", '```'
+          ) + (Get-Content dist\*.sha256) + '```'
+          Set-Content notes.md $notes -Encoding UTF8
+
+      - name: GitHub Release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = Get-ChildItem dist -File | ForEach-Object FullName
+          gh release create $env:TAG $files --title "UMToptimizer $($env:TAG -replace '^v', '')" --notes-file notes.md --verify-tag

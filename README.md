@@ -10,12 +10,15 @@
 
 ## İndir
 
-[**Releases**](https://github.com/umutlab/umtoptimizer/releases/latest) sayfasından `UMToptimizer.exe` dosyasını indirip çalıştırın.
+[**Releases**](https://github.com/umutlab/umtoptimizer/releases/latest) sayfasından indirin:
 
-- Kurulum gerekmez; .NET kurulu olması da gerekmez (tek dosya, self-contained). Windows 10 1809 ve üzeri, x64.
-- Dosya imzalı değildir; Windows SmartScreen "bilinmeyen yayımcı" uyarısı gösterebilir ("Ek bilgi → Yine de çalıştır").
-- İndirdiğiniz dosyayı sürüm notlarındaki SHA-256 özetiyle karşılaştırabilirsiniz: `Get-FileHash UMToptimizer.exe`
-- Bu sürümde hazır bir setup yoktur; `build.ps1` ile kendiniz üretebilirsiniz ([Derleme](#derleme)).
+- `UMToptimizer-Setup-<sürüm>.exe`: kurulum sihirbazı ("yalnızca benim için" seçilirse yönetici izni istemez).
+- `UMToptimizer-<sürüm>-portable.exe`: kurulum gerektirmeyen tek dosya.
+
+.NET kurulu olması gerekmez (self-contained). Windows 10 1809 ve üzeri, x64.
+Dosyalar imzalı değildir; Windows SmartScreen "bilinmeyen yayımcı" uyarısı gösterebilir ("Ek bilgi → Yine de çalıştır").
+Sürüm dosyaları bu depodaki kaynaktan GitHub Actions tarafından derlenir ([release.yml](.github/workflows/release.yml));
+indirdiğiniz dosyayı sürüm notlarındaki SHA-256 özetiyle karşılaştırabilirsiniz: `Get-FileHash <dosya>`
 
 ## Ne yapar?
 
@@ -100,7 +103,7 @@ Aşağıdakiler **gerçek ortamda uçtan uca** denenmedi:
 
 - **Android profil uygulama ve geri yükleme gerçek bir telefonda denenmedi.** Ayrıştırma, komut üretimi ve arayüz akışı testlerle doğrulandı.
 - **Windows profillerinin yönetici olarak tam çalışması denenmedi**, çünkü test bilgisayarının ayarlarını değiştirirdi. Yedek/uygula/geri yükle mantığı test anahtarında doğrulandı; hizmetler, AppX kaldırma, DISM gibi adımlar yalnızca kod incelemesinden geçti.
-- **Setup üretimi bu sürümde denenmedi** (derleme makinesinde Inno Setup yoktu). `build.ps1 -NoSetup` ile test + publish çalışır.
+- **Setup GitHub Actions'ta derleniyor ama kurulup elle denenmedi** (sihirbaz, kısayollar, kaldırma). Taşınabilir exe geliştirme makinesinde açılıp denendi.
 - **Bazı adımlar geri alınamaz:** kaldırılan uygulamalar (Edge, OneDrive vb.), silinen geçici dosyalar, Explorer klasör görünümü önbelleği ve Android `pm compile`.
 - Çalışan bir **Windows** profili arayüzden iptal edilemez (yükseltilmiş süreç yükseltilmemiş uygulamadan durdurulamaz).
 
