@@ -1,0 +1,388 @@
+<Window x:Class="UMToptimizer.UI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:UMToptimizer.UI"
+        Title="UMToptimizer" Icon="pack://application:,,,/UMToptimizer;component/Assets/UMToptimizer.ico"
+        Width="1160" Height="800" MinWidth="960" MinHeight="640" WindowStartupLocation="CenterScreen">
+
+    <!-- Görev çubuğu ilerlemesi. XAML'de tanımlı olduğu için asla null değildir
+         (eski sürümde tanımsızdı; her işlem "Object reference not set" ile düşüyordu). -->
+    <Window.TaskbarItemInfo>
+        <TaskbarItemInfo ProgressState="{Binding TaskbarState}" ProgressValue="{Binding Progress}"/>
+    </Window.TaskbarItemInfo>
+
+    <Window.InputBindings>
+        <KeyBinding Key="D1" Modifiers="Ctrl" Command="{Binding GoCommand}" CommandParameter="0"/>
+        <KeyBinding Key="D2" Modifiers="Ctrl" Command="{Binding GoCommand}" CommandParameter="1"/>
+        <KeyBinding Key="D3" Modifiers="Ctrl" Command="{Binding GoCommand}" CommandParameter="2"/>
+        <KeyBinding Key="D4" Modifiers="Ctrl" Command="{Binding GoCommand}" CommandParameter="3"/>
+    </Window.InputBindings>
+
+    <Grid>
+        <!-- ================= Uygulama kabuğu (onay katmanı açıkken devre dışı) ================= -->
+        <Grid x:Name="Shell">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Confirm, Converter={StaticResource Vis}}" Value="Visible">
+                            <Setter Property="IsEnabled" Value="False"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="232"/>
+                <ColumnDefinition/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ================= Kenar çubuğu ================= -->
+            <DockPanel Margin="12,18,4,16">
+                <StackPanel DockPanel.Dock="Top">
+                    <StackPanel Orientation="Horizontal" Margin="10,0,0,24">
+                        <Image Source="pack://application:,,,/UMToptimizer;component/Assets/UMToptimizer.ico" Width="28" Height="28"/>
+                        <StackPanel Margin="10,0,0,0">
+                            <TextBlock Text="UMToptimizer" FontSize="16" FontWeight="SemiBold"/>
+                            <TextBlock Text="Kontrol sende" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <RadioButton x:Name="NavHome" Style="{StaticResource Nav}" Tag="&#xE80F;" Content="Genel bakış" ToolTip="Ctrl+1"
+                                 IsChecked="{Binding Page, Converter={StaticResource Eq}, ConverterParameter=0}"/>
+                    <RadioButton Style="{StaticResource Nav}" Tag="&#xE770;" Content="Windows" ToolTip="Ctrl+2"
+                                 IsChecked="{Binding Page, Converter={StaticResource Eq}, ConverterParameter=1}"/>
+                    <RadioButton Style="{StaticResource Nav}" Tag="&#xE8EA;" Content="Android (ADB)" ToolTip="Ctrl+3"
+                                 IsChecked="{Binding Page, Converter={StaticResource Eq}, ConverterParameter=2}"/>
+                    <RadioButton Style="{StaticResource Nav}" Tag="&#xE777;" Content="Geri yükleme" ToolTip="Ctrl+4"
+                                 IsChecked="{Binding Page, Converter={StaticResource Eq}, ConverterParameter=3}"/>
+                </StackPanel>
+
+                <!-- ADB durumu: renk + metin birlikte (yalnızca renge dayanmaz) -->
+                <Border DockPanel.Dock="Bottom" Style="{StaticResource Card}" Padding="12" Margin="0" VerticalAlignment="Bottom">
+                    <DockPanel>
+                        <Ellipse Width="8" Height="8" Margin="0,6,10,0" VerticalAlignment="Top">
+                            <Ellipse.Style>
+                                <Style TargetType="Ellipse">
+                                    <Setter Property="Fill" Value="{DynamicResource SystemFillColorAttentionBrush}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding AdbState}" Value="Missing">
+                                            <Setter Property="Fill" Value="{DynamicResource SystemFillColorCriticalBrush}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding AdbState}" Value="Unauthorized">
+                                            <Setter Property="Fill" Value="{DynamicResource SystemFillColorCautionBrush}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding AdbState}" Value="Connected">
+                                            <Setter Property="Fill" Value="{DynamicResource SystemFillColorSuccessBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Ellipse.Style>
+                        </Ellipse>
+                        <StackPanel>
+                            <TextBlock Text="{Binding AdbTitle}" AutomationProperties.LiveSetting="Polite" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding AdbDetail}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" LineHeight="17" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+            </DockPanel>
+
+            <!-- ================= İçerik ================= -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Satır içi bildirim: hata penceresi yerine. Tür hem simge hem renkle belirtilir. -->
+                <Border Margin="32,16,32,0" Padding="14,10" CornerRadius="8" BorderThickness="1"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        Visibility="{Binding Notice, Converter={StaticResource Vis}}">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="{DynamicResource SystemFillColorAttentionBackgroundBrush}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Notice.Kind}" Value="Success">
+                                    <Setter Property="Background" Value="{DynamicResource SystemFillColorSuccessBackgroundBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Notice.Kind}" Value="Warning">
+                                    <Setter Property="Background" Value="{DynamicResource SystemFillColorCautionBackgroundBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Notice.Kind}" Value="Error">
+                                    <Setter Property="Background" Value="{DynamicResource SystemFillColorCriticalBackgroundBrush}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="&#xE711;" FontFamily="{StaticResource Icons}" MinWidth="32" MinHeight="32" Padding="0" Margin="12,0,0,0"
+                                VerticalAlignment="Top" ToolTip="Bildirimi kapat" AutomationProperties.Name="Bildirimi kapat" Command="{Binding DismissNoticeCommand}"/>
+                        <TextBlock FontSize="18" Margin="0,6,12,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource Glyph}">
+                                    <Setter Property="Text" Value="&#xE946;"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorAttentionBrush}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Notice.Kind}" Value="Success">
+                                            <Setter Property="Text" Value="&#xE73E;"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Notice.Kind}" Value="Warning">
+                                            <Setter Property="Text" Value="&#xE7BA;"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Notice.Kind}" Value="Error">
+                                            <Setter Property="Text" Value="&#xEA39;"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock x:Name="NoticeText" Text="{Binding Notice.Text}" Style="{StaticResource Body}" VerticalAlignment="Center"
+                                   AutomationProperties.LiveSetting="Assertive"/>
+                    </DockPanel>
+                </Border>
+
+                <Grid Grid.Row="1">
+                    <!-- ============ Genel bakış ============ -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding Page, Converter={StaticResource Eq}, ConverterParameter=0}">
+                        <StackPanel Margin="32,24,32,16">
+                            <TextBlock Text="Genel bakış" Style="{StaticResource H1}"/>
+                            <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,22"
+                                       Text="Bir profil seç, neyi değiştireceğini incele, uygula. Her uygulamadan önce otomatik yedek alınır; beğenmezsen Geri yükleme'den dönebilirsin."/>
+                            <UniformGrid Columns="3">
+                                <Border Style="{StaticResource Card}" Margin="0,0,12,12">
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Bottom" HorizontalAlignment="Left" Content="Profilleri aç" Margin="0,12,0,0" Command="{Binding GoCommand}" CommandParameter="1"/>
+                                        <StackPanel>
+                                            <TextBlock Text="&#xE770;" Style="{StaticResource Glyph}" FontSize="24" Margin="0,0,0,10"/>
+                                            <TextBlock Text="Windows" Style="{StaticResource H2}"/>
+                                            <TextBlock Text="{Binding HomeWindows}" Style="{StaticResource Muted}"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Margin="0,0,12,12">
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Bottom" HorizontalAlignment="Left" Content="Cihaz profilleri" Margin="0,12,0,0" Command="{Binding GoCommand}" CommandParameter="2"/>
+                                        <StackPanel>
+                                            <TextBlock Text="&#xE8EA;" Style="{StaticResource Glyph}" FontSize="24" Margin="0,0,0,10"/>
+                                            <TextBlock Text="Android (ADB)" Style="{StaticResource H2}"/>
+                                            <TextBlock Text="{Binding HomeAdb}" Style="{StaticResource Muted}"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Bottom" HorizontalAlignment="Left" Content="Geri yükleme" Margin="0,12,0,0" Command="{Binding GoCommand}" CommandParameter="3"/>
+                                        <StackPanel>
+                                            <TextBlock Text="&#xE777;" Style="{StaticResource Glyph}" FontSize="24" Margin="0,0,0,10"/>
+                                            <TextBlock Text="Yedekler" Style="{StaticResource H2}"/>
+                                            <TextBlock Text="{Binding HomeBackups}" Style="{StaticResource Muted}"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                            </UniformGrid>
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Text="Nasıl çalışır?" Style="{StaticResource H2}"/>
+                                    <TextBlock Style="{StaticResource Muted}">
+                                        1.  Windows veya Android sayfasında profili seç; açıklama, riskler ve (Android'de) tüm komutlar görünür.<LineBreak/>
+                                        2.  Uygula'ya bas. Windows için yönetici izni istenir; Android için USB hata ayıklama açık olmalı.<LineBreak/>
+                                        3.  Uygulama öncesi değerler kaydedilir. Geri yükleme sayfasından tek tıkla eski hâline dönebilirsin.
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ============ Windows ============ -->
+                    <Grid Margin="32,24,32,12" Visibility="{Binding Page, Converter={StaticResource Eq}, ConverterParameter=1}">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
+                        <StackPanel Margin="0,0,0,18">
+                            <TextBlock Text="Windows" Style="{StaticResource H1}"/>
+                            <TextBlock Style="{StaticResource Muted}" Text="Profil yönetici izniyle arka planda çalışır; ilerleme aşağıdaki işlem panelinde görünür."/>
+                        </StackPanel>
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="20"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                            <ListBox ItemsSource="{Binding WindowsProfiles}" SelectedItem="{Binding WindowsProfile}" AutomationProperties.Name="Windows profilleri"
+                                     ItemTemplate="{StaticResource ProfileItem}" HorizontalContentAlignment="Stretch" VerticalAlignment="Top"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" Background="Transparent" BorderThickness="0"/>
+                            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="0,0,8,0">
+                                    <ContentControl Content="{Binding WindowsProfile}" ContentTemplate="{StaticResource ProfileHeader}" Focusable="False"/>
+                                    <Border Style="{StaticResource Card}">
+                                        <StackPanel>
+                                            <TextBlock Text="Neler değişir?" Style="{StaticResource H2}"/>
+                                            <ItemsControl ItemsSource="{Binding WindowsProfile.Highlights}" Focusable="False">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <DockPanel Margin="0,3">
+                                                            <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="14" Margin="0,4,10,0" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"/>
+                                                            <TextBlock Text="{Binding}" Style="{StaticResource Body}"/>
+                                                        </DockPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Style="{StaticResource Card}">
+                                        <StackPanel>
+                                            <TextBlock Text="Seçenekler" Style="{StaticResource H2}"/>
+                                            <CheckBox IsChecked="{Binding RestorePoint}" Content="Önce Sistem Geri Yükleme noktası oluştur (önerilir, birkaç dakika sürebilir)"/>
+                                            <CheckBox IsChecked="{Binding AllowBitLocker}" Margin="0,6,0,0" Content="BitLocker açıksa kapatılmasına izin ver (kurtarma anahtarımı yedekledim)"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Button Content="Profili uygula" Style="{DynamicResource AccentButtonStyle}" HorizontalAlignment="Right" Padding="28,8" Margin="0,4,0,8"
+                                            Command="{Binding ApplyWindowsCommand}" IsEnabled="{Binding CanApplyWindows}"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </Grid>
+
+                    <!-- ============ Android ============ -->
+                    <Grid Margin="32,24,32,12" Visibility="{Binding Page, Converter={StaticResource Eq}, ConverterParameter=2}">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
+                        <StackPanel Margin="0,0,0,18">
+                            <TextBlock Text="Android (ADB)" Style="{StaticResource H1}"/>
+                            <TextBlock Style="{StaticResource Muted}" Text="Cihaz takılınca otomatik algılanır. Profil tek bir ADB oturumunda çalışır; değişen ayarların ilk değerleri yedeklenir."/>
+                        </StackPanel>
+                        <Border Grid.Row="1" Style="{StaticResource Card}">
+                            <StackPanel>
+                                <DockPanel>
+                                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                                        <Button Content="ADB'yi indir" Margin="8,0,0,0" Style="{DynamicResource AccentButtonStyle}"
+                                                Command="{Binding InstallAdbCommand}" IsEnabled="{Binding Idle}"
+                                                Visibility="{Binding AdbMissing, Converter={StaticResource Vis}}"/>
+                                        <Button Content="adb.exe seç" Margin="8,0,0,0" Click="PickAdb_Click" IsEnabled="{Binding Idle}"/>
+                                    </StackPanel>
+                                    <TextBlock Text="&#xE8EA;" Style="{StaticResource Glyph}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                    <ComboBox ItemsSource="{Binding Devices}" SelectedItem="{Binding Device}" DisplayMemberPath="Display"
+                                              AutomationProperties.Name="Android cihaz" HorizontalAlignment="Stretch"/>
+                                </DockPanel>
+                                <TextBlock Text="{Binding DeviceHint}" Style="{StaticResource Muted}" Margin="32,8,0,0" FontSize="13"/>
+                            </StackPanel>
+                        </Border>
+                        <Grid Grid.Row="2">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="20"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                            <ListBox ItemsSource="{Binding AndroidProfiles}" SelectedItem="{Binding AndroidProfile}" AutomationProperties.Name="Android profilleri"
+                                     ItemTemplate="{StaticResource ProfileItem}" HorizontalContentAlignment="Stretch"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" Background="Transparent" BorderThickness="0"/>
+                            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="0,0,8,0">
+                                    <ContentControl Content="{Binding AndroidProfile}" ContentTemplate="{StaticResource ProfileHeader}" Focusable="False"/>
+                                    <Expander Margin="0,0,0,12" HorizontalAlignment="Stretch">
+                                        <Expander.Header>
+                                            <TextBlock FontSize="14">
+                                                <Run Text="Tüm komutları göster"/><Run Text="  ·  " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/><Run Text="{Binding AndroidProfile.Badge, Mode=OneWay}" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                            </TextBlock>
+                                        </Expander.Header>
+                                        <ListBox ItemsSource="{Binding AndroidProfile.Commands}" MaxHeight="320" FontFamily="{StaticResource Mono}" FontSize="12"
+                                                 AutomationProperties.Name="Profil komutları"
+                                                 VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+                                    </Expander>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,0,8">
+                                        <Button Content="Cihazı yeniden başlat" Padding="18,8" Margin="0,0,8,0"
+                                                Command="{Binding RebootCommand}" IsEnabled="{Binding CanApplyAndroid}"
+                                                ToolTip="{Binding ApplyAndroidWhy}" ToolTipService.ShowOnDisabled="True"/>
+                                        <Button Content="Profili uygula" Style="{DynamicResource AccentButtonStyle}" Padding="28,8"
+                                                Command="{Binding ApplyAndroidCommand}" IsEnabled="{Binding CanApplyAndroid}"
+                                                ToolTip="{Binding ApplyAndroidWhy}" ToolTipService.ShowOnDisabled="True"/>
+                                    </StackPanel>
+                                    <!-- Düğme kapalıyken nedeni ipucuna bırakılmaz; görünür metin olarak da yazılır -->
+                                    <TextBlock Text="{Binding ApplyAndroidWhy}" Style="{StaticResource Muted}" FontSize="13" HorizontalAlignment="Right"
+                                               Visibility="{Binding ApplyAndroidWhy, Converter={StaticResource Vis}}"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </Grid>
+
+                    <!-- ============ Geri yükleme ============ -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding Page, Converter={StaticResource Eq}, ConverterParameter=3}">
+                        <StackPanel Margin="32,24,32,16">
+                            <TextBlock Text="Geri yükleme" Style="{StaticResource H1}"/>
+                            <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,22"
+                                       Text="Yedekler ilk uygulamadan önceki (orijinal) değerleri tutar; art arda profil uygulasan da ilk hâline döner."/>
+                            <Border Style="{StaticResource Card}">
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" VerticalAlignment="Center" Margin="16,0,0,0" Content="Windows'u geri yükle"
+                                            Command="{Binding RestoreWindowsCommand}" IsEnabled="{Binding CanRestoreWindows}"
+                                            ToolTip="{Binding RestoreWindowsWhy}" ToolTipService.ShowOnDisabled="True"/>
+                                    <TextBlock Text="&#xE770;" Style="{StaticResource Glyph}" FontSize="22" Margin="0,2,14,0"/>
+                                    <StackPanel>
+                                        <TextBlock Text="Windows" Style="{StaticResource H2}"/>
+                                        <TextBlock Text="{Binding RestoreWindowsText}" Style="{StaticResource Muted}"/>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" VerticalAlignment="Center" Margin="16,0,0,0" Content="Seçili cihazı geri yükle"
+                                                Command="{Binding RestoreAndroidCommand}" IsEnabled="{Binding CanRestoreAndroid}"
+                                                ToolTip="{Binding RestoreAndroidWhy}" ToolTipService.ShowOnDisabled="True"/>
+                                        <TextBlock Text="&#xE8EA;" Style="{StaticResource Glyph}" FontSize="22" Margin="0,2,14,0"/>
+                                        <StackPanel>
+                                            <TextBlock Text="Android cihazlar" Style="{StaticResource H2}"/>
+                                            <TextBlock Style="{StaticResource Muted}" Text="Geri yüklemek için cihaz bağlı ve yetkili olmalı. Derleme gibi bazı komutlar geri alınamaz."/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                    <ListBox ItemsSource="{Binding Snapshots}" SelectedItem="{Binding Snapshot}" AutomationProperties.Name="Android yedekleri"
+                                             Margin="36,12,0,0" Background="Transparent" BorderThickness="0"
+                                             Visibility="{Binding HasSnapshots, Converter={StaticResource Vis}}">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="2,4">
+                                                    <TextBlock Text="{Binding Serial}" FontWeight="SemiBold" FontSize="14"/>
+                                                    <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <TextBlock Text="Kayıtlı Android yedeği yok. İlk profil uygulamasında otomatik oluşturulur." Style="{StaticResource Muted}" Margin="36,12,0,0"
+                                               Visibility="{Binding HasSnapshots, Converter={StaticResource Vis}, ConverterParameter=!}"/>
+                                    <TextBlock Text="{Binding RestoreAndroidWhy}" Style="{StaticResource Muted}" FontSize="13" Margin="36,8,0,0"
+                                               Visibility="{Binding HasSnapshots, Converter={StaticResource Vis}}"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- ================= İşlem paneli (tüm sayfalarda ortak) ================= -->
+                <Border Grid.Row="2" Style="{StaticResource Card}" Margin="32,0,32,16" Visibility="{Binding ActivityVisible, Converter={StaticResource Vis}}">
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top">
+                            <Button DockPanel.Dock="Right" Content="&#xE711;" FontFamily="{StaticResource Icons}" MinWidth="32" MinHeight="32" Padding="0" Margin="6,0,0,0"
+                                    ToolTip="Paneli gizle" AutomationProperties.Name="İşlem panelini gizle" Command="{Binding HideActivityCommand}"/>
+                            <Button DockPanel.Dock="Right" Content="Günlükler" Padding="10,4" Margin="6,0,0,0" Command="{Binding OpenLogsCommand}"/>
+                            <Button DockPanel.Dock="Right" Content="İptal et" Padding="10,4" Command="{Binding CancelCommand}"
+                                    Visibility="{Binding CanCancel, Converter={StaticResource Vis}}"/>
+                            <TextBlock Text="{Binding ActivityTitle}" AutomationProperties.LiveSetting="Polite" Style="{StaticResource H2}" VerticalAlignment="Center" Margin="0"/>
+                        </DockPanel>
+                        <ProgressBar DockPanel.Dock="Top" Height="4" Margin="0,10,0,10" Minimum="0" Maximum="1" Value="{Binding Progress, Mode=OneWay}"
+                                     IsIndeterminate="{Binding ProgressIndeterminate}" AutomationProperties.Name="İşlem ilerlemesi"/>
+                        <TextBox x:Name="LogBox" AutomationProperties.Name="İşlem günlüğü" Height="160" IsReadOnly="True" FontFamily="{StaticResource Mono}" FontSize="12"
+                                 TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+                    </DockPanel>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- ================= Onay katmanı =================
+             Yıkıcı işlemlerden önce sorulur. Varsayılan odak "Vazgeç"te; Esc vazgeçer; Tab katmanın içinde döner. -->
+        <Grid Visibility="{Binding Confirm, Converter={StaticResource Vis}}" Background="{DynamicResource SmokeFillColorDefaultBrush}"
+              KeyboardNavigation.TabNavigation="Cycle" KeyboardNavigation.DirectionalNavigation="Cycle" KeyboardNavigation.ControlTabNavigation="Cycle">
+            <Border x:Name="ConfirmCard" MaxWidth="520" MinWidth="380" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24" CornerRadius="8" BorderThickness="1"
+                    BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}">
+                <StackPanel>
+                    <TextBlock Text="{Binding Confirm.Title}" Style="{StaticResource H2}" FontSize="20" Margin="0,0,0,12"/>
+                    <TextBlock Text="{Binding Confirm.Text}" Style="{StaticResource Body}"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
+                        <Button x:Name="ConfirmNo" Content="Vazgeç" IsCancel="True" MinWidth="104" Padding="18,8" Margin="0,0,8,0" Command="{Binding ConfirmNoCommand}"/>
+                        <Button Content="{Binding Confirm.Yes}" Style="{DynamicResource AccentButtonStyle}" MinWidth="104" Padding="18,8" Command="{Binding ConfirmYesCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

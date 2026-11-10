@@ -1,8 +1,8 @@
-﻿; UMToptimizer 3 — Inno Setup 6 kurulum betiği
+﻿; UMToptimizer 4 — Inno Setup 6 kurulum betiği
 ; Derleme: ..\build.ps1  (önce dotnet publish, sonra ISCC çalıştırır)
 
 #ifndef AppVersion
-  #define AppVersion "3.0.0"
+  #define AppVersion "4.0.0"
 #endif
 #define AppName "UMToptimizer"
 #define AppExe  "UMToptimizer.exe"

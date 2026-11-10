@@ -1,4 +1,4 @@
-﻿# UMToptimizer 3 — Windows profilleri (Windows 10/11, PowerShell 5.1+)
+﻿# UMToptimizer 4 — Windows profilleri (Windows 10/11, PowerShell 5.1+)
 #
 # Tasarım: her kayıt defteri ayarı ve hizmet aşağıdaki tablolarda TEK KEZ tanımlanır.
 # Uygulama, yedekleme ve geri yükleme aynı tablodan türetilir; böylece yedek listesi
@@ -43,28 +43,106 @@ function Log([string]$Message) {
 # önceden oluşturup sahte backup.json ya da junction/symlink bırakırsa, yönetici olarak çalışan bu betik
 # saldırganın seçtiği kayıt defteri değerlerini veya dosya yollarını yazar (yerel yetki yükseltme).
 # Bu yüzden her çalıştırmada: bağlantılar silinir, sahip Administrators yapılır, yazma yalnızca SYSTEM/Administrators'a verilir.
-function Protect-DataDir {
-    foreach ($d in $Data, $Logs) {
-        $item = Get-Item -LiteralPath $d -Force -ErrorAction SilentlyContinue
-        if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { $item.Delete() }
-        New-Item -ItemType Directory -Force -Path $d | Out-Null
+# Ayrıca klasör ya da yedek dosyası bu işlemden ÖNCE güvenilir bir sahibe ait değilse içindeki backup.json
+# "orijinal değerler" sayılmaz; karantinaya alınır (aşağıda Protect-DataDir).
+
+function Test-Link([string]$Path) {
+    try { [bool]([IO.File]::GetAttributes($Path) -band [IO.FileAttributes]::ReparsePoint) } catch { $false }
+}
+
+# Bağlantıyı (junction/symlink) hedefine dokunmadan kaldırır.
+function Remove-Link([string]$Path) {
+    try {
+        if ([IO.File]::GetAttributes($Path) -band [IO.FileAttributes]::Directory) { [IO.Directory]::Delete($Path) } else { [IO.File]::Delete($Path) }
+    } catch { }
+}
+
+# Ağacı bağlantıları TAKİP ETMEDEN dolaşır ve yalnızca bağlantıları (hedeflerine dokunmadan) kaldırır. Hiçbir dosya silmez.
+# Yalnızca DACL'ı kilitlenmiş veri klasöründe çağrılır; böylece dolaşma sırasında araya bağlantı sokulamaz.
+# NOT: Bu betik kullanıcının yazabildiği klasörlerde (TEMP, %LOCALAPPDATA%) yönetici olarak HİÇBİR dosya işlemi yapmaz;
+# o adımlar (geçici dosya temizliği, Mağaza veritabanı) yükseltilmemiş uygulama tarafından kullanıcının kendi yetkisiyle yapılır.
+function Remove-Links([string]$Path) {
+    try { $entries = @([IO.Directory]::EnumerateFileSystemEntries($Path)) } catch { return }
+    foreach ($e in $entries) {
+        try {
+            $a = [IO.File]::GetAttributes($e)
+            if ($a -band [IO.FileAttributes]::ReparsePoint) { Remove-Link $e }
+            elseif ($a -band [IO.FileAttributes]::Directory) { Remove-Links $e }
+        } catch { }
     }
-    Get-ChildItem -LiteralPath $Data -Recurse -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint } | ForEach-Object { $_.Delete() }
+}
+
+function Get-TrustedSids { 'S-1-5-32-544', 'S-1-5-18', [Security.Principal.WindowsIdentity]::GetCurrent().User.Value }
+
+# Sahip Administrators, SYSTEM ya da betiği çalıştıran (yükseltilmiş) hesap mı?
+function Test-TrustedOwner([string]$Path) {
+    try {
+        (Get-Acl -LiteralPath $Path -ErrorAction Stop).GetOwner([Security.Principal.SecurityIdentifier]).Value -in (Get-TrustedSids)
+    } catch { $false }
+}
+
+# DACL'da güvenilir hesaplar dışında birine yazma/silme/izin değiştirme hakkı veren kural var mı?
+# (Klasörü önceden oluşturan biri kendine açık bir "Tam denetim" kuralı eklemiş olabilir.)
+function Test-TrustedAcl([string]$Path) {
+    try {
+        $write = [Security.AccessControl.FileSystemRights]'Write, Delete, DeleteSubdirectoriesAndFiles, ChangePermissions, TakeOwnership'
+        $trusted = Get-TrustedSids
+        foreach ($r in (Get-Acl -LiteralPath $Path -ErrorAction Stop).GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
+            $bits = [int]$r.FileSystemRights
+            # 0x50000000 = GENERIC_ALL | GENERIC_WRITE (kalıtım kurallarında ham bit olarak görünür)
+            if ($r.AccessControlType -eq 'Allow' -and (($bits -band [int]$write) -or ($bits -band 0x50000000)) -and $r.IdentityReference.Value -notin $trusted) { return $false }
+        }
+        $true
+    } catch { $false }
+}
+
+# DACL'ı TAMAMEN değiştirir (icacls /grant:r yalnızca adı geçen hesapların kurallarını değiştirir, başkasının
+# eklediği açık kurallar kalırdı): SYSTEM ve Administrators tam denetim, Users yalnızca okuma; kalıtım kapalı.
+function Set-ProtectedAcl([string]$Path) {
+    $sd = New-Object Security.AccessControl.DirectorySecurity
+    $sd.SetSecurityDescriptorSddlForm('D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)', [Security.AccessControl.AccessControlSections]::Access)
+    [IO.Directory]::SetAccessControl($Path, $sd)
+}
+
+function Protect-DataDir {
+    if (Test-Link $Data) { Remove-Link $Data }
+    # 1) Klasörün bu çalıştırmadan ÖNCEKİ durumu güvenilir miydi?
+    $preTrusted = (-not (Test-Path -LiteralPath $Data)) -or ((Test-TrustedOwner $Data) -and (Test-TrustedAcl $Data))
+    # 2) Klasörü oluştur ve hemen kilitle. Başarısız olursa devam edilmez (fail-closed).
+    New-Item -ItemType Directory -Force -Path $Data | Out-Null
+    Set-ProtectedAcl $Data
+    if (-not (Test-TrustedAcl $Data)) { throw 'Veri klasörü korunamadı; hiçbir değişiklik yapılmadı.' }
+    # 3) Artık kimse yazamaz. Yedeğin sahibine ŞİMDİ bakılır (sahiplik aşağıda toplu değiştirilmeden önce):
+    #    1 ile 2 arasında araya sokulan bir dosya saldırgana ait görünür ve güvenilmez sayılır.
+    $backupTrusted = (-not (Test-Path -LiteralPath $Backup)) -or ((-not (Test-Link $Backup)) -and (Test-TrustedOwner $Backup))
+    Remove-Links $Data
+    New-Item -ItemType Directory -Force -Path $Logs | Out-Null
     icacls.exe $Data /setowner '*S-1-5-32-544' /T /C /Q | Out-Null
-    icacls.exe $Data /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' /C /Q | Out-Null
     icacls.exe "$Data\*" /reset /T /C /Q 2>$null | Out-Null
+
+    if ((Test-Path -LiteralPath $Backup) -and -not ($preTrusted -and $backupTrusted)) {
+        Move-Item -LiteralPath $Backup -Destination (Join-Path $Data ('backup-untrusted-{0:yyyyMMdd-HHmmss}.json' -f (Get-Date))) -Force
+        Log 'Veri klasörü güvenilir bir hesaba ait değildi; içindeki yedek kullanılmadı ve ayrı bir dosyaya taşındı.'
+    }
+}
+
+# Yedeği atomik yazar: geçici dosyaya yaz, geri okuyup doğrula, sonra yerine taşı. Hata olursa fırlatır;
+# çağıran hiçbir ayarı değiştirmeden durur. Yarım kalmış/bozuk bir backup.json asla oluşmaz.
+function Write-Backup($Object) {
+    $tmp = "$Backup.tmp"
+    $Object | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $tmp -Encoding UTF8 -ErrorAction Stop
+    $check = Get-Content -LiteralPath $tmp -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    if ($null -eq $check.Registry) { throw 'Yedek doğrulanamadı.' }
+    Move-Item -LiteralPath $tmp -Destination $Backup -Force -ErrorAction Stop
 }
 
 # Yükseltme başka bir yönetici hesabıyla yapıldıysa (standart kullanıcı + UAC parolası), HKCU/TEMP
 # yönetici hesabını gösterir. Uygulama kendi kullanıcısının SID'ini verir; kullanıcı ayarları ONA yazılır.
-$Hkcu = 'HKCU:'; $HkcuClasses = 'HKCU:\Software\Classes'; $UserLocal = $env:LOCALAPPDATA; $UserTemp = $env:TEMP
+$Hkcu = 'HKCU:'; $HkcuClasses = 'HKCU:\Software\Classes'
 if ($UserSid -match '^S-1-5-21(-\d+){1,8}$' -and $UserSid -ne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value -and
     (Test-Path "Registry::HKEY_USERS\$UserSid")) {
     $Hkcu = "Registry::HKEY_USERS\$UserSid"
     $HkcuClasses = "Registry::HKEY_USERS\${UserSid}_Classes"
-    $profileDir = (Get-CimInstance Win32_UserProfile -Filter "SID='$UserSid'" -ErrorAction SilentlyContinue).LocalPath
-    if ($profileDir) { $UserLocal = Join-Path $profileDir 'AppData\Local'; $UserTemp = Join-Path $UserLocal 'Temp' }
 }
 function Resolve-Key([string]$Path) {
     if ($Path -like 'HKCU:\Software\Classes*') { return $HkcuClasses + $Path.Substring(22) }
@@ -209,14 +287,23 @@ function Test-HostsBlock { (Get-Content -LiteralPath $HostsFile -Raw -ErrorActio
 
 # GÜVENLİK: üçüncü taraf listeden yalnızca "0.0.0.0 alan.adi" / "127.0.0.1 alan.adi" engelleme satırları kabul edilir.
 # Liste ele geçirilse bile hosts'a "1.2.3.4 banka.com" gibi yönlendirme satırı giremez.
+# Ayrıca yalnızca adında "adobe" geçen alan adları alınır: ele geçirilmiş bir liste "0.0.0.0 github.com" gibi
+# satırlarla ilgisiz siteleri engelleyemez. Satır sayısı da sınırlıdır.
 function Select-BlockLines([string]$Text) {
     @($Text -split '\r?\n' | ForEach-Object { $_.Trim() } |
-        Where-Object { $_ -match '^(0\.0\.0\.0|127\.0\.0\.1)\s+[A-Za-z0-9][A-Za-z0-9.-]{0,252}$' } | Select-Object -Unique)
+        Where-Object { $_ -match '^(0\.0\.0\.0|127\.0\.0\.1)\s+(?=[A-Za-z0-9.-]*adobe)[A-Za-z0-9][A-Za-z0-9.-]{0,252}$' } |
+        Select-Object -Unique -First 5000)
 }
 
 # ============================== YEDEK / GERİ YÜKLEME ==============================
 function Save-Backup {
-    if (Test-Path -LiteralPath $Backup) { Log 'Önceki yedek korunuyor (ilk uygulamadan önceki orijinal değerler).'; return }
+    if (Test-Path -LiteralPath $Backup) {
+        $ok = try { $null -ne (Get-Content -LiteralPath $Backup -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop).Registry } catch { $false }
+        if ($ok) { Log 'Önceki yedek korunuyor (ilk uygulamadan önceki orijinal değerler).'; return }
+        # Okunamayan yedek "orijinal değerler" sayılamaz; ayrılır ve şimdiki durumdan yenisi alınır.
+        Move-Item -LiteralPath $Backup -Destination (Join-Path $Data ('backup-corrupt-{0:yyyyMMdd-HHmmss}.json' -f (Get-Date))) -Force -ErrorAction Stop
+        Log 'Önceki yedek okunamadı; ayrı bir dosyaya taşındı ve yeni yedek alınıyor.'
+    }
     $names = @($Services.S.Keys) + @($Services.A.Keys)
     $reserved = try { "$((Get-WindowsReservedStorageState -ErrorAction Stop).ReservedStorageState)" } catch { '' }
     $defender = try { (Get-MpPreference -ErrorAction Stop).SubmitSamplesConsent } catch { $null }
@@ -234,7 +321,7 @@ function Save-Backup {
         BitLockerWasOn  = Test-BitLockerOn
         Aggressive      = $false
     }
-    $snapshot | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $Backup -Encoding UTF8
+    Write-Backup $snapshot   # başarısız olursa fırlatır: yedek alınamadıysa hiçbir ayar değiştirilmez
     Log "✓ Yedek kaydedildi: $Backup ($($snapshot.Registry.Count) kayıt defteri değeri, $($snapshot.Services.Count) hizmet)"
 }
 
@@ -319,8 +406,6 @@ function Apply-Profile([bool]$Aggressive) {
 
     Step 'Hazırda bekletme kapatıldı' { powercfg.exe /hibernate off }
     Step 'Defender otomatik örnek gönderimi kapatıldı' { Set-MpPreference -SubmitSamplesConsent 2 -ErrorAction Stop }
-    $storeDb = Join-Path $UserLocal 'Packages\Microsoft.WindowsStore_8wekyb3d8bbwe\LocalState\store.db'
-    if (Test-Path -LiteralPath $storeDb) { Step 'Mağaza önerilen arama veritabanı engellendi' { icacls.exe $storeDb /deny '*S-1-1-0:F' } }
     if (Test-BitLockerOn) {
         if ($AllowBitLocker) { Step 'BitLocker şifre çözme başlatıldı' { Disable-BitLocker -MountPoint $env:SystemDrive -ErrorAction Stop } }
         else { Log 'BitLocker değiştirilmedi (izin verilmedi).' }
@@ -340,21 +425,25 @@ function Apply-Profile([bool]$Aggressive) {
         Stop-Process -Name 'logi_download_assistant' -Force -ErrorAction SilentlyContinue
         if (-not (Test-HostsBlock)) {
             Step 'Adobe engelleme listesi hosts dosyasına eklendi' {
+                [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12  # eski Windows 10
                 $list = Select-BlockLines (Invoke-RestMethod 'https://github.com/Ruddernation-Designs/Adobe-URL-Block-List/raw/refs/heads/master/hosts' -TimeoutSec 20)
                 if ($list.Count -eq 0) { throw 'Listede geçerli engelleme satırı yok.' }
                 Add-Content -LiteralPath $HostsFile -Value "`r`n$HostsBegin`r`n$($list -join "`r`n")`r`n$HostsEnd" -Encoding Default
                 ipconfig.exe /flushdns
             }
         }
-        $json = Get-Content -LiteralPath $Backup -Raw | ConvertFrom-Json
-        $json.Aggressive = $true
-        $json | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $Backup -Encoding UTF8
+        Step 'Yedeğe Agresif işareti yazıldı' {
+            $json = Get-Content -LiteralPath $Backup -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            $json.Aggressive = $true
+            Write-Backup $json
+        }
     }
 
-    # Temizlik en sonda (en uzun süren adımlar)
-    foreach ($t in $UserTemp, (Join-Path $env:WINDIR 'Temp')) { Get-ChildItem -LiteralPath $t -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue }
-    Log '✓ Geçici dosyalar temizlendi'
-    Step 'Disk Temizleme arka planda başlatıldı' { Start-Process cleanmgr.exe '/d C: /VERYLOWDISK' -WindowStyle Hidden }
+    # Temizlik en sonda (en uzun süren adımlar). Kullanıcının TEMP klasörü burada SİLİNMEZ: kullanıcının yazabildiği
+    # bir klasörde yönetici olarak özyinelemeli silme, bağlantılar üzerinden başka klasörlerin silinmesine yol açabilir.
+    # O temizliği uygulama kullanıcının kendi yetkisiyle yapar; sistem geçici dosyalarını Disk Temizleme halleder.
+    # Tam yol: Start-Process yalın adı çalışma klasöründe de arar.
+    Step 'Disk Temizleme arka planda başlatıldı' { Start-Process (Join-Path $env:WINDIR 'System32\cleanmgr.exe') '/d C: /VERYLOWDISK' -WindowStyle Hidden }
     Log 'DISM bileşen temizliği çalışıyor (birkaç dakika sürebilir)…'
     Step 'DISM bileşen temizliği' { Dism.exe /Online /Cleanup-Image /StartComponentCleanup /Quiet }
     Log "Profil tamamlandı. Yedek: $Backup"

@@ -14,12 +14,21 @@ internal static partial class Program
     {
         if (args.Length == 0)
         {
-            var app = new App();
-            app.InitializeComponent();
-            return app.Run();
+            try
+            {
+                var app = new App();
+                app.InitializeComponent();
+                return app.Run();
+            }
+            catch (Exception e)
+            {
+                // Tema/kaynak yüklenemedi gibi açılış hataları: ham çökme yerine tek, anlaşılır ileti.
+                App.StartupFailed(e);
+                return 1;
+            }
         }
 
-        // Argümanla çağrıldıysa: GUI yerine komut satırı modu (WinExe olduğu için konsola elle bağlanırız).
+        // Argümanla çağrıldıysa: arayüz yerine komut satırı modu (WinExe olduğu için konsola elle bağlanılır).
         if (!AttachConsole(-1)) AllocConsole();
         var utf8 = new UTF8Encoding(false);
         Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), utf8) { AutoFlush = true });

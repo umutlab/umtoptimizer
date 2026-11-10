@@ -6,8 +6,19 @@ namespace UMToptimizer.Core;
 public enum Platform { Windows, Android }
 
 /// <summary>Tek profil tipi: Windows profilleri PowerShell moduna, Android profilleri gömülü .bat dosyasına işaret eder.</summary>
-public sealed record Profile(string Id, Platform Platform, string Name, string Subtitle, string Description, string Risk, string Source, params string[] Highlights)
+/// <remarks>Bilerek record DEĞİL: tembel yüklenen _commands alanı record eşitliğine/özetine girer ve seçimden sonra
+/// özet değişirdi (liste seçimi özet tabanlı izlenir). Sınıf olarak kimlik = başvuru; katalogda her profil tektir.</remarks>
+public sealed class Profile(string id, Platform platform, string name, string subtitle, string description, string risk, string source, params string[] highlights)
 {
+    public string Id { get; } = id;
+    public Platform Platform { get; } = platform;
+    public string Name { get; } = name;
+    public string Subtitle { get; } = subtitle;
+    public string Description { get; } = description;
+    public string Risk { get; } = risk;
+    public string Source { get; } = source;
+    public IReadOnlyList<string> Highlights { get; } = highlights;
+
     private IReadOnlyList<string>? _commands;
 
     /// <summary>Android komutları ("adb shell " öneki atılmış, tekrarlar ayıklanmış). İlk erişimde yüklenir.</summary>

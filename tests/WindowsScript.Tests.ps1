@@ -1,4 +1,4 @@
-﻿# Windows betiğinin yedek → uygula → geri yükle döngüsünü GERÇEK SİSTEME DOKUNMADAN test eder.
+﻿# Windows betiğinin yedek → uygula → geri yükle döngüsünü ve güvenlik denetimlerini GERÇEK SİSTEME DOKUNMADAN test eder.
 # Tablo yalnızca HKCU:\Software\UMToptimizerTest altındaki sahte anahtarlarla değiştirilir, veri klasörü geçicidir.
 # Çalıştırma: powershell -NoProfile -ExecutionPolicy Bypass -File tests\WindowsScript.Tests.ps1
 $ErrorActionPreference = 'Stop'
@@ -35,7 +35,7 @@ try {
     Check 'mevcut değer yedeklendi (7)' (($b.Registry | Where-Object Name -EQ Existing).Value -eq 7)
     Check 'olmayan değer Exists=false' (-not ($b.Registry | Where-Object Name -EQ Missing).Exists)
     Check 'olmayan anahtar KeyExisted=false' (-not ($b.Registry | Where-Object Name -EQ Val).KeyExisted)
-    Check 'IPv6 bağlamaları yedeğe yazıldı (eski hata)' ($null -ne $b.PSObject.Properties['IPv6'])
+    Check 'IPv6 bağlamaları yedeğe yazıldı' ($null -ne $b.PSObject.Properties['IPv6'])
 
     Write-Host '2) Uygula (tablodaki değerler)'
     foreach ($r in $Registry) { Set-Reg $r[1] $r[2] $r[3] }
@@ -66,9 +66,11 @@ try {
     Check 'günlükte atlama kaydı var' ((Get-Content $LogPath -Raw) -match 'izin verilmeyen girdi atlandı')
 
     Write-Host '6) Hosts filtresi'
-    $lines = Select-BlockLines "# yorum`n0.0.0.0 adobe.com`n127.0.0.1 a.b.c`n1.2.3.4 banka.com`n0.0.0.0 x.com; rm`n0.0.0.0 adobe.com"
-    Check 'yalnızca 2 geçerli engelleme satırı' ($lines.Count -eq 2)
-    Check 'yönlendirme satırı reddedildi' (-not ($lines -match 'banka'))
+    $lines = Select-BlockLines "# yorum`n0.0.0.0 adobe.com`n127.0.0.1 lm.licenses.adobe.com`n1.2.3.4 banka.com`n0.0.0.0 adobe.com; rm`n0.0.0.0 adobe.com`n0.0.0.0 github.com`n0.0.0.0 cc-api-data.adobe.io"
+    Check 'yalnızca 3 geçerli engelleme satırı (tekrar ayıklandı)' ($lines.Count -eq 3)
+    Check 'yönlendirme satırı (1.2.3.4) reddedildi' (-not ($lines -match 'banka'))
+    Check 'Adobe dışı alan adı (github.com) reddedildi' (-not ($lines -match 'github'))
+    Check 'komut eklenmiş satır reddedildi' (-not ($lines -match 'rm'))
 
     Write-Host '7) LogPath doğrulaması'
     $r = & powershell.exe -NoProfile -Command ". '$script' -DataRoot '$tmp' -LogPath 'C:\Windows\evil.log'; `$LogPath"
@@ -82,9 +84,56 @@ try {
     Check 'HKCU → HKEY_USERS\<sid>' ((Resolve-Key 'HKCU:\Control Panel\Desktop') -eq 'Registry::HKEY_USERS\S-1-5-21-1-2-3-1001\Control Panel\Desktop')
     Check 'Classes → <sid>_Classes' ((Resolve-Key 'HKCU:\Software\Classes\CLSID\{x}') -eq 'Registry::HKEY_USERS\S-1-5-21-1-2-3-1001_Classes\CLSID\{x}')
     Check 'HKLM değişmez' ((Resolve-Key 'HKLM:\SOFTWARE\X') -eq 'HKLM:\SOFTWARE\X')
+
+    Write-Host '9) Güvenlik: Remove-Links bağlantıları takip etmez, yalnızca bağlantıyı kaldırır'
+    $victim = Join-Path $tmp 'kurban'; $tree = Join-Path $tmp 'veri-benzeri'
+    New-Item -ItemType Directory -Force -Path $victim, "$tree\alt" | Out-Null
+    Set-Content "$victim\onemli.txt" 'silinmemeli'
+    Set-Content "$tree\alt\backup.json" '{}'
+    cmd.exe /c mklink /J "$tree\baglanti" "$victim" | Out-Null
+    cmd.exe /c mklink /J "$tree\alt\baglanti2" "$victim" | Out-Null
+    Check 'junction kuruldu (ön koşul)' (Test-Link "$tree\baglanti")
+    Remove-Links $tree
+    Check 'junction hedefindeki dosya DURUYOR' (Test-Path "$victim\onemli.txt")
+    Check 'üst düzey bağlantı kaldırıldı' (-not (Test-Path "$tree\baglanti"))
+    Check 'alt klasördeki bağlantı kaldırıldı' (-not (Test-Path "$tree\alt\baglanti2"))
+    Check 'normal dosyaya dokunulmadı' (Test-Path "$tree\alt\backup.json")
+    Check 'betikte özyinelemeli silme fonksiyonu kalmadı' (-not (Get-Command Clear-Tree -ErrorAction SilentlyContinue))
+
+    Write-Host '10) Güvenlik: DACL tamamen değiştirilir (önceden eklenmiş açık kural kalmaz)'
+    $acl = Join-Path $tmp 'dacl'
+    New-Item -ItemType Directory -Force -Path $acl | Out-Null
+    Check 'başlangıçta güvenilir (yalnızca bize ve sisteme ait kurallar)' (Test-TrustedAcl $acl)
+    icacls.exe $acl /grant '*S-1-1-0:(OI)(CI)M' /Q | Out-Null     # saldırganın önceden eklediği kural: Everyone → Değiştir
+    Check 'yabancı yazma kuralı güvenilmez sayılır' (-not (Test-TrustedAcl $acl))
+    Set-ProtectedAcl $acl
+    Check 'Set-ProtectedAcl sonrası güvenilir' (Test-TrustedAcl $acl)
+    $sddl = (Get-Acl -LiteralPath $acl).Sddl
+    Check 'Everyone kuralı kaldırıldı' ($sddl -notmatch ';;;WD\)')
+    Check 'kalıtım kapatıldı (korumalı DACL)' ($sddl -match 'D:PAI')
+    Check 'olmayan yol güvenilir sayılmaz' (-not (Test-TrustedAcl "$tmp\yok-boyle-bir-sey"))
+
+    Write-Host '11) Yedek atomik yazılır; yazılamazsa mevcut yedek bozulmaz'
+    Write-Backup ([ordered]@{ Registry = @(1); Aggressive = $false })
+    Check 'yedek yazıldı, geçici dosya kalmadı' ((Test-Path $Backup) -and -not (Test-Path "$Backup.tmp"))
+    $threw = $false; try { Write-Backup ([ordered]@{ Baska = 1 }) } catch { $threw = $true }
+    Check 'geçersiz yedek reddedildi (hata fırlatıldı)' $threw
+    Check 'mevcut yedek olduğu gibi duruyor' ((Get-Content $Backup -Raw | ConvertFrom-Json).Registry[0] -eq 1)
+
+    Write-Host '12) Bozuk mevcut yedek "orijinal" sayılmaz'
+    Set-Content -LiteralPath $Backup -Value '{ yarım kalmış' -Encoding UTF8
+    Save-Backup
+    Check 'bozuk yedek ayrı dosyaya taşındı' ([bool](Get-ChildItem $tmp -Filter 'backup-corrupt-*.json'))
+    Check 'yeni yedek okunabiliyor' (@((Get-Content $Backup -Raw | ConvertFrom-Json).Registry).Count -eq 4)
+
+    Write-Host '13) Sahiplik denetimi'
+    Check 'kendi dosyamız güvenilir sayılır' (Test-TrustedOwner $Backup)
+    Check 'olmayan yol güvenilir sayılmaz' (-not (Test-TrustedOwner "$tmp\yok-boyle-bir-sey"))
 }
 finally {
     Remove-Item $K -Recurse -Force -ErrorAction SilentlyContinue
+    icacls.exe $tmp /reset /T /C /Q 2>$null | Out-Null
+    if (Get-Command Remove-Links -ErrorAction SilentlyContinue) { Remove-Links $tmp }
     Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 }
 Write-Host ("Sonuç: {0}" -f $(if ($fail) { "$fail BAŞARISIZ" } else { 'hepsi geçti' }))

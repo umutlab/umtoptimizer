@@ -6,19 +6,23 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks> <!-- LibraryImport (AttachConsole) kaynak üretici gereği -->
     <RootNamespace>UMToptimizer</RootNamespace>
     <StartupObject>UMToptimizer.Program</StartupObject>
     <ApplicationIcon>Assets\UMToptimizer.ico</ApplicationIcon>
-    <Version>3.0.0</Version>
+    <Version>4.0.0</Version>
     <Authors>UMToptimizer contributors</Authors>
     <Description>Windows ve Android (ADB) optimizasyon kontrol merkezi</Description>
     <!-- WPF Fluent (ThemeMode) API'si .NET 10'da hâlâ "experimental" işaretli. -->
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
-    <SatelliteResourceLanguages>tr;en</SatelliteResourceLanguages>
+    <SatelliteResourceLanguages>tr</SatelliteResourceLanguages>
   </PropertyGroup>
 
-  <!-- dotnet publish -c Release: .NET runtime gerektirmeyen tek dosya exe -->
+  <!-- dotnet publish -c Release: .NET runtime gerektirmeyen tek dosya exe.
+       Ölçüldü (Windows 11, pencere görünene kadar): sıkıştırılmış 62 MB → ilk açılış ~4 sn, sonrakiler ~970 ms.
+       ReadyToRun + sıkıştırmasız 149 MB → sonrakiler ~740 ms ama ilk açılış ~20 sn (büyük dosyanın ilk taraması).
+       İlk izlenim ve disk boyutu için sıkıştırılmış ayar seçildi. -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
