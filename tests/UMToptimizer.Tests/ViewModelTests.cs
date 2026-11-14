@@ -36,6 +36,23 @@ internal sealed class FakeBackend : Backend
     public override Task InstallAdbAsync(IProgress<double> progress, CancellationToken ct) { Calls.Add("install"); return Task.CompletedTask; }
     public override void SaveAdbPath(string file) => Calls.Add("save:" + file);
     public override void OpenFolder(string path) => Calls.Add("open");
+
+    public override Task<List<AdbDevice>> ReconnectAsync(Action<string> log, CancellationToken ct) { Calls.Add("reconnect"); return Task.FromResult(DeviceList.ToList()); }
+
+    // Debloat: sahte cihaz paket listesini bellekte tutar; kaldırma/geri getirme listeyi günceller.
+    public List<DevicePackage> Packages = [];
+    public Dictionary<string, UadEntry> Uad = [];
+    public HashSet<string> Rejected = [];
+    public override Task<List<DevicePackage>> ScanPackagesAsync(string serial, CancellationToken ct) => Task.FromResult(Packages.ToList());
+    public override Task<DebloatResult> DebloatAsync(string serial, IReadOnlyList<string> packages, bool restore, Action<int, int> progress, Action<string> log, CancellationToken ct)
+    {
+        Calls.Add($"{(restore ? "bring-back" : "remove")}:{string.Join(',', packages)}");
+        var done = packages.Where(p => !Rejected.Contains(p)).ToList();
+        Packages = Packages.Select(p => done.Contains(p.Name) ? p with { Removed = !restore } : p).ToList();
+        return Task.FromResult(new DebloatResult(packages.Count, done, packages.Where(Rejected.Contains).ToList(), ""));
+    }
+    public override IReadOnlyDictionary<string, DateTimeOffset> DebloatHistory(string serial) => new Dictionary<string, DateTimeOffset>();
+    public override UadEntry? DescribePackage(string package) => Uad.GetValueOrDefault(package);
 }
 
 public sealed class ViewModelTests
@@ -255,6 +272,33 @@ public sealed class ViewModelTests
         Assert.Equal(["restore:R58M12"], backend.Calls);
     }
 
+    /// <summary>İzleyici yeni takılan cihazı bildirmese bile "Cihazı bağla" onu bulur ve düğmeleri açar.</summary>
+    [Fact]
+    public async Task ConnectDevice_FindsPhoneTheWatcherMissed()
+    {
+        var backend = new FakeBackend();
+        using var vm = await Started(backend);
+        Assert.False(vm.CanApplyAndroid);
+
+        vm.ConnectDeviceCommand.Execute(null);
+        await Until(() => vm.Notice is not null && !vm.IsBusy, "cihaz yok bildirimi");
+        Assert.Equal(NoticeKind.Warning, vm.Notice!.Kind);
+        Assert.Contains("USB hata ayıklama", vm.Notice.Text);
+
+        backend.DeviceList = [new("R58M12", "unauthorized", "")];
+        vm.ConnectDeviceCommand.Execute(null);
+        await Until(() => vm.AdbState == AdbState.Unauthorized && !vm.IsBusy, "izin bekleniyor");
+        Assert.Contains("izin", vm.Notice!.Text);
+
+        backend.DeviceList = [Phone]; // izleyici bunu hiç bildirmedi
+        vm.ConnectDeviceCommand.Execute(null);
+        await Until(() => vm.AdbState == AdbState.Connected && !vm.IsBusy, "cihaz bağlandı");
+        Assert.Equal(new Notice(NoticeKind.Success, "SM A525F bağlandı."), vm.Notice);
+        Assert.Equal(Phone, vm.Device);
+        Assert.True(vm.CanApplyAndroid);
+        Assert.Equal(["reconnect", "reconnect", "reconnect"], backend.Calls);
+    }
+
     [Fact]
     public void GoCommand_ClampsPage()
     {
@@ -262,9 +306,164 @@ public sealed class ViewModelTests
         vm.GoCommand.Execute("2");
         Assert.Equal(2, vm.Page);
         vm.GoCommand.Execute("99");
-        Assert.Equal(3, vm.Page);
+        Assert.Equal(4, vm.Page);
         vm.GoCommand.Execute("çöp");
-        Assert.Equal(3, vm.Page);
+        Assert.Equal(4, vm.Page);
+    }
+}
+
+public sealed class DebloatViewModelTests
+{
+    private static readonly AdbDevice Phone = new("R58M12", "device", "SM_A525F");
+
+    private static UadEntry Entry(Removal level, params string[] neededBy) => new("Oem", "Test açıklaması.\nİkinci satır.", level, [], neededBy);
+
+    private static FakeBackend Device() => new()
+    {
+        DeviceList = [Phone],
+        Packages = [new("com.oem.bloat", false), new("com.oem.core", false), new("com.oem.gone", true), new("com.oem.mystery", false), new("com.oem.tips", false)],
+        Uad = new()
+        {
+            ["com.oem.bloat"] = Entry(Removal.Recommended),
+            ["com.oem.tips"] = Entry(Removal.Recommended),
+            ["com.oem.core"] = Entry(Removal.Unsafe),
+            ["com.oem.gone"] = Entry(Removal.Advanced),
+        },
+    };
+
+    private static async Task Until(Func<bool> condition, string what)
+    {
+        var clock = Stopwatch.StartNew();
+        while (!condition())
+        {
+            Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10), "Zaman aşımı: " + what);
+            await Task.Delay(10);
+        }
+    }
+
+    private static async Task<MainViewModel> Scanned(FakeBackend backend)
+    {
+        var vm = new MainViewModel(backend);
+        vm.Start();
+        await Until(() => vm.CanScan, "cihaz hazır");
+        vm.ScanPackagesCommand.Execute(null);
+        await Until(() => vm.DebloatScanned && !vm.IsBusy, "tarama");
+        return vm;
+    }
+
+    private static async Task Confirm(MainViewModel vm, bool yes)
+    {
+        await Until(() => vm.Confirm is not null, "onay katmanı");
+        (yes ? vm.ConfirmYesCommand : vm.ConfirmNoCommand).Execute(null);
+    }
+
+    [Fact]
+    public async Task Scan_DefaultsToRecommended_AndSeparatesRemoved()
+    {
+        using var vm = await Scanned(Device());
+
+        Assert.Equal(["com.oem.bloat", "com.oem.tips"], vm.DebloatRows.Select(r => r.Name)); // varsayılan süzgeç: Önerilen
+        Assert.Equal("Test açıklaması.", vm.DebloatRows[0].Short);
+        Assert.False(vm.CanDebloat); // hiçbir şey işaretli değil
+        Assert.NotNull(vm.DebloatWhy);
+
+        vm.DebloatLevel = vm.DebloatLevels.Single(l => l.Level is null);
+        Assert.Equal(4, vm.DebloatRows.Count);
+        Assert.Equal(Removal.Unlisted, vm.DebloatRows.Single(r => r.Name == "com.oem.mystery").Level);
+
+        vm.DebloatView = 1;
+        Assert.Equal(["com.oem.gone"], vm.DebloatRows.Select(r => r.Name)); // düzey süzgeci geri getirme görünümünü daraltmaz
+
+        vm.DebloatView = 0;
+        vm.DebloatSearch = "TIPS";
+        Assert.Equal(["com.oem.tips"], vm.DebloatRows.Select(r => r.Name));
+    }
+
+    [Fact]
+    public async Task SelectVisible_NeverPicksUnsafeOrUnlisted()
+    {
+        using var vm = await Scanned(Device());
+        vm.DebloatLevel = vm.DebloatLevels.Single(l => l.Level is null);
+
+        vm.SelectVisibleCommand.Execute(null);
+
+        Assert.Equal(["com.oem.bloat", "com.oem.tips"], vm.DebloatRows.Where(r => r.IsSelected).Select(r => r.Name));
+        Assert.True(vm.CanDebloat);
+        vm.ClearSelectionCommand.Execute(null);
+        Assert.False(vm.CanDebloat);
+    }
+
+    [Fact]
+    public async Task Remove_ThenRestore_RoundTrips()
+    {
+        var backend = Device();
+        using var vm = await Scanned(backend);
+
+        vm.DebloatRows.Single(r => r.Name == "com.oem.bloat").IsSelected = true;
+        vm.DebloatCommand.Execute(null);
+        await Until(() => vm.Confirm is not null, "onay katmanı");
+        Assert.DoesNotContain("Dikkat", vm.Confirm!.Text); // önerilen paket için korkutucu uyarı yok
+        await Confirm(vm, yes: true);
+        await Until(() => vm.Notice is not null && vm.DebloatRows.Count == 1, "kaldırma"); // liste, bildirimden hemen sonra yenilenir
+
+        Assert.Equal(["remove:com.oem.bloat"], backend.Calls);
+        Assert.Equal(NoticeKind.Success, vm.Notice!.Kind);
+        Assert.Equal(["com.oem.tips"], vm.DebloatRows.Select(r => r.Name)); // liste cihazın yeni durumunu gösterir
+
+        vm.DebloatView = 1;
+        Assert.Contains(vm.DebloatRows, r => r.Name == "com.oem.bloat");
+        vm.DebloatRows.Single(r => r.Name == "com.oem.bloat").IsSelected = true;
+        vm.DebloatCommand.Execute(null);
+        await Confirm(vm, yes: true);
+        await Until(() => backend.Calls.Count == 2 && vm.DebloatRows.All(r => r.Name != "com.oem.bloat"), "geri getirme");
+
+        Assert.Equal("bring-back:com.oem.bloat", backend.Calls[1]);
+        Assert.DoesNotContain(vm.DebloatRows, r => r.Name == "com.oem.bloat");
+    }
+
+    [Fact]
+    public async Task RiskyRemoval_WarnsLoudly_AndDecliningChangesNothing()
+    {
+        var backend = Device();
+        using var vm = await Scanned(backend);
+        vm.DebloatLevel = vm.DebloatLevels.Single(l => l.Level == Removal.Unsafe);
+        vm.DebloatRows.Single().IsSelected = true;
+
+        vm.DebloatCommand.Execute(null);
+        await Until(() => vm.Confirm is not null, "onay katmanı");
+        Assert.Contains("Dikkat", vm.Confirm!.Text);
+        Assert.Contains("Güvensiz", vm.Confirm.Text);
+        await Confirm(vm, yes: false);
+        await Task.Delay(50);
+
+        Assert.Empty(backend.Calls);
+    }
+
+    [Fact]
+    public async Task RejectedPackages_AreReportedAsWarning()
+    {
+        var backend = Device();
+        backend.Rejected.Add("com.oem.tips");
+        using var vm = await Scanned(backend);
+        vm.SelectVisibleCommand.Execute(null);
+
+        vm.DebloatCommand.Execute(null);
+        await Confirm(vm, yes: true);
+        await Until(() => vm.Notice is not null && vm.DebloatRows.Count == 1, "kaldırma");
+
+        Assert.Equal(NoticeKind.Warning, vm.Notice!.Kind);
+        Assert.Contains("1/2", vm.Notice.Text);
+        Assert.Equal(["com.oem.tips"], vm.DebloatRows.Select(r => r.Name));
+    }
+
+    [Fact]
+    public async Task UnpluggingDevice_ClearsStaleList()
+    {
+        using var vm = await Scanned(Device());
+        vm.Device = null;
+        Assert.False(vm.DebloatScanned);
+        Assert.Empty(vm.DebloatRows);
+        Assert.False(vm.CanScan);
     }
 }
 
@@ -287,7 +486,17 @@ public sealed class WindowSmokeTests
                 app.InitializeComponent();
                 app.DispatcherUnhandledException += (_, e) => { errors.Add(e.Exception); e.Handled = true; };
                 SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext());
-                var backend = new FakeBackend { Windows = () => Task.Delay(400) };
+                var backend = new FakeBackend
+                {
+                    Windows = () => Task.Delay(400),
+                    DeviceList = [new("R58M12", "device", "SM_A525F")],
+                    Packages = [new("com.oem.bloat", false), new("com.oem.core", false), new("com.oem.gone", true)],
+                    Uad = new()
+                    {
+                        ["com.oem.bloat"] = new("Oem", "Açıklama.", Removal.Recommended, ["com.oem.core"], []),
+                        ["com.oem.core"] = new("Aosp", "Çekirdek.", Removal.Recommended, [], ["com.oem.bloat"]),
+                    },
+                };
                 var window = new MainWindow(new MainViewModel(backend));
                 window.Show();
                 Assert.NotNull(window.TaskbarItemInfo);
@@ -302,7 +511,7 @@ public sealed class WindowSmokeTests
                 ];
                 Assert.DoesNotContain(keys, k => window.TryFindResource(k) is null);
                 var vm = Assert.IsType<MainViewModel>(window.DataContext);
-                for (var page = 0; page <= 3; page++) { vm.Page = page; Pump(); } // her sayfa bir kez çizilsin
+                for (var page = 0; page <= 4; page++) { vm.Page = page; Pump(); } // her sayfa bir kez çizilsin
                 Assert.Equal(TaskbarItemProgressState.None, window.TaskbarItemInfo.ProgressState);
 
                 // Kullanıcının bildirdiği akışın aynısı: Windows → Profili uygula → onayla → işlem çalışır.
@@ -318,6 +527,19 @@ public sealed class WindowSmokeTests
                 Assert.Contains("sahte günlük satırı", window.LogBox.Text);
                 Assert.Equal(TaskbarItemProgressState.None, window.TaskbarItemInfo.ProgressState);
                 Assert.True(vm.CanApplyWindows); // düğmeler kilitli kalmadı
+
+                // Debloat sayfası gerçek satırlarla çizilir: satır şablonu, düzey rozeti ve ayrıntı paneli bağlamaları.
+                vm.Page = 4;
+                PumpUntil(() => vm.CanScan, "cihaz hazır");
+                vm.ScanPackagesCommand.Execute(null);
+                PumpUntil(() => vm.DebloatScanned && !vm.IsBusy, "tarama");
+                Assert.Equal(2, vm.DebloatRows.Count);
+                vm.DebloatFocus = vm.DebloatRows[0];
+                vm.DebloatRows[0].IsSelected = true;
+                Pump();
+                vm.DebloatView = 1;
+                Pump();
+                Assert.Single(vm.DebloatRows);
 
                 window.Close();
                 Pump();

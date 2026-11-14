@@ -69,6 +69,14 @@ public partial class MainWindow : Window
         LogBox.ScrollToEnd();
     }
 
+    /// <summary>Paket listesinde odak satırdadır; Boşluk o satırın onay kutusunu değiştirir (klavyeyle toplu seçim).</summary>
+    private void PackageList_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Space || sender is not System.Windows.Controls.ListBox { SelectedItem: PackageRow row }) return;
+        row.IsSelected = !row.IsSelected;
+        e.Handled = true;
+    }
+
     private void PickAdb_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog { Title = "adb.exe dosyasını seç", Filter = "ADB|adb.exe", FileName = "adb.exe" };

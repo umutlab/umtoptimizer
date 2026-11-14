@@ -16,6 +16,7 @@
         <KeyBinding Key="D2" Modifiers="Ctrl" Command="{Binding GoCommand}" CommandParameter="1"/>
         <KeyBinding Key="D3" Modifiers="Ctrl" Command="{Binding GoCommand}" CommandParameter="2"/>
         <KeyBinding Key="D4" Modifiers="Ctrl" Command="{Binding GoCommand}" CommandParameter="3"/>
+        <KeyBinding Key="D5" Modifiers="Ctrl" Command="{Binding GoCommand}" CommandParameter="4"/>
     </Window.InputBindings>
 
     <Grid>
@@ -51,6 +52,8 @@
                                  IsChecked="{Binding Page, Converter={StaticResource Eq}, ConverterParameter=1}"/>
                     <RadioButton Style="{StaticResource Nav}" Tag="&#xE8EA;" Content="Android (ADB)" ToolTip="Ctrl+3"
                                  IsChecked="{Binding Page, Converter={StaticResource Eq}, ConverterParameter=2}"/>
+                    <RadioButton Style="{StaticResource Nav}" Tag="&#xE74D;" Content="Debloat (Android)" ToolTip="Ctrl+5"
+                                 IsChecked="{Binding Page, Converter={StaticResource Eq}, ConverterParameter=4}"/>
                     <RadioButton Style="{StaticResource Nav}" Tag="&#xE777;" Content="Geri yükleme" ToolTip="Ctrl+4"
                                  IsChecked="{Binding Page, Converter={StaticResource Eq}, ConverterParameter=3}"/>
                 </StackPanel>
@@ -252,6 +255,9 @@
                                         <Button Content="ADB'yi indir" Margin="8,0,0,0" Style="{DynamicResource AccentButtonStyle}"
                                                 Command="{Binding InstallAdbCommand}" IsEnabled="{Binding Idle}"
                                                 Visibility="{Binding AdbMissing, Converter={StaticResource Vis}}"/>
+                                        <Button Content="Cihazı bağla" Margin="8,0,0,0" Command="{Binding ConnectDeviceCommand}" IsEnabled="{Binding Idle}"
+                                                ToolTip="Takılı telefonu yeniden arar; bulamazsa ADB bağlantısını yeniden başlatır"
+                                                Visibility="{Binding AdbMissing, Converter={StaticResource Vis}, ConverterParameter=!}"/>
                                         <Button Content="adb.exe seç" Margin="8,0,0,0" Click="PickAdb_Click" IsEnabled="{Binding Idle}"/>
                                     </StackPanel>
                                     <TextBlock Text="&#xE8EA;" Style="{StaticResource Glyph}" VerticalAlignment="Center" Margin="0,0,12,0"/>
@@ -281,6 +287,13 @@
                                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
                                     </Expander>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,0,8">
+                                        <Button Padding="18,8" Margin="0,0,8,0" Command="{Binding GoCommand}" CommandParameter="4"
+                                                ToolTip="Gereksiz sistem uygulamalarını kaldır veya geri getir (Ctrl+5)">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE74D;" Style="{StaticResource Glyph}" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                <TextBlock Text="Debloat"/>
+                                            </StackPanel>
+                                        </Button>
                                         <Button Content="Cihazı yeniden başlat" Padding="18,8" Margin="0,0,8,0"
                                                 Command="{Binding RebootCommand}" IsEnabled="{Binding CanApplyAndroid}"
                                                 ToolTip="{Binding ApplyAndroidWhy}" ToolTipService.ShowOnDisabled="True"/>
@@ -294,6 +307,194 @@
                                 </StackPanel>
                             </ScrollViewer>
                         </Grid>
+                    </Grid>
+
+                    <!-- ============ Debloat ============
+                         Akış: tara → düzeye göre süz → işaretle → kaldır. "Kaldırılmış" görünümü aynı listeyi geri getirme için kullanır. -->
+                    <Grid Margin="32,24,32,12" Visibility="{Binding Page, Converter={StaticResource Eq}, ConverterParameter=4}">
+                        <Grid.Resources>
+                            <!-- Güvenlik düzeyi rozeti: renkli nokta + metin (yalnızca renge dayanmaz) -->
+                            <DataTemplate x:Key="LevelBadge">
+                                <Border CornerRadius="10" Padding="8,2" VerticalAlignment="Center" Background="{DynamicResource SubtleFillColorSecondaryBrush}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,1,6,0">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Setter Property="Fill" Value="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Level}" Value="Recommended">
+                                                            <Setter Property="Fill" Value="{DynamicResource SystemFillColorSuccessBrush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Level}" Value="Advanced">
+                                                            <Setter Property="Fill" Value="{DynamicResource SystemFillColorAttentionBrush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Level}" Value="Expert">
+                                                            <Setter Property="Fill" Value="{DynamicResource SystemFillColorCautionBrush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Level}" Value="Unsafe">
+                                                            <Setter Property="Fill" Value="{DynamicResource SystemFillColorCriticalBrush}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <TextBlock Text="{Binding LevelText}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </Grid.Resources>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Margin="0,0,0,18">
+                            <TextBlock Text="Debloat" Style="{StaticResource H1}"/>
+                            <TextBlock Style="{StaticResource Muted}"
+                                       Text="Telefonla gelen gereksiz sistem uygulamalarını root gerektirmeden kaldırır. Uygulama yalnızca senin kullanıcından kalkar, dosyası telefonda durur; bu yüzden kaldırdığın her şeyi buradan geri getirebilirsin."/>
+                        </StackPanel>
+
+                        <!-- Cihaz + tarama -->
+                        <Border Grid.Row="1" Style="{StaticResource Card}">
+                            <StackPanel>
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Content="Paketleri tara" Margin="12,0,0,0" Padding="18,6" Style="{DynamicResource AccentButtonStyle}"
+                                            Command="{Binding ScanPackagesCommand}" IsEnabled="{Binding CanScan}"
+                                            ToolTip="{Binding ScanWhy}" ToolTipService.ShowOnDisabled="True"
+                                            Visibility="{Binding DebloatScanned, Converter={StaticResource Vis}, ConverterParameter=!}"/>
+                                    <Button DockPanel.Dock="Right" Content="Yeniden tara" Margin="12,0,0,0" Padding="18,6"
+                                            Command="{Binding ScanPackagesCommand}" IsEnabled="{Binding CanScan}"
+                                            ToolTip="{Binding ScanWhy}" ToolTipService.ShowOnDisabled="True"
+                                            Visibility="{Binding DebloatScanned, Converter={StaticResource Vis}}"/>
+                                    <Button DockPanel.Dock="Right" Content="Cihazı bağla" Margin="12,0,0,0" Padding="14,6"
+                                            Command="{Binding ConnectDeviceCommand}" IsEnabled="{Binding Idle}"
+                                            ToolTip="Takılı telefonu yeniden arar; bulamazsa ADB bağlantısını yeniden başlatır"
+                                            Visibility="{Binding AdbMissing, Converter={StaticResource Vis}, ConverterParameter=!}"/>
+                                    <TextBlock Text="&#xE8EA;" Style="{StaticResource Glyph}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                    <ComboBox ItemsSource="{Binding Devices}" SelectedItem="{Binding Device}" DisplayMemberPath="Display"
+                                              AutomationProperties.Name="Android cihaz" HorizontalAlignment="Stretch"/>
+                                </DockPanel>
+                                <TextBlock Text="{Binding ScanWhy}" Style="{StaticResource Muted}" Margin="32,8,0,0" FontSize="13"
+                                           Visibility="{Binding ScanWhy, Converter={StaticResource Vis}}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Görünüm, arama, güvenlik düzeyi -->
+                        <StackPanel Grid.Row="2" Margin="0,0,0,10" Visibility="{Binding DebloatScanned, Converter={StaticResource Vis}}">
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                                    <RadioButton GroupName="DebloatView" Content="{Binding InstalledTab}" Margin="0,0,16,0" MinWidth="0"
+                                                 IsChecked="{Binding DebloatView, Converter={StaticResource Eq}, ConverterParameter=0}"/>
+                                    <RadioButton GroupName="DebloatView" Content="{Binding RemovedTab}" MinWidth="0"
+                                                 IsChecked="{Binding DebloatView, Converter={StaticResource Eq}, ConverterParameter=1}"/>
+                                </StackPanel>
+                                <ComboBox DockPanel.Dock="Right" Width="150" ItemsSource="{Binding DebloatLevels}" SelectedItem="{Binding DebloatLevel}" DisplayMemberPath="Name"
+                                          AutomationProperties.Name="Güvenlik düzeyi" ToolTip="Güvenlik düzeyine göre süz"
+                                          Visibility="{Binding DebloatView, Converter={StaticResource Eq}, ConverterParameter=0}"/>
+                                <Grid Margin="20,0,12,0">
+                                    <TextBox Text="{Binding DebloatSearch, UpdateSourceTrigger=PropertyChanged, Delay=200}" AutomationProperties.Name="Paket ara"/>
+                                    <TextBlock Text="Paket adında veya açıklamada ara" IsHitTestVisible="False" Margin="12,0" VerticalAlignment="Center" FontSize="14"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                               Visibility="{Binding DebloatSearch, Converter={StaticResource Vis}, ConverterParameter=!}"/>
+                                </Grid>
+                            </DockPanel>
+                            <TextBlock Text="{Binding DebloatLevel.Hint}" Style="{StaticResource Muted}" FontSize="13" Margin="0,8,0,0"
+                                       Visibility="{Binding DebloatView, Converter={StaticResource Eq}, ConverterParameter=0}"/>
+                            <TextBlock Text="Geri getirmek istediklerini işaretle. Bu uygulamayla kaldırdıkların en üstte listelenir."
+                                       Style="{StaticResource Muted}" FontSize="13" Margin="0,8,0,0"
+                                       Visibility="{Binding DebloatView, Converter={StaticResource Eq}, ConverterParameter=1}"/>
+                        </StackPanel>
+
+                        <!-- Liste + ayrıntı -->
+                        <Grid Grid.Row="3">
+                            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="16"/><ColumnDefinition Width="300"/></Grid.ColumnDefinitions>
+
+                            <!-- Boş durum: henüz tarama yapılmadı -->
+                            <StackPanel Grid.ColumnSpan="3" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="460"
+                                        Visibility="{Binding DebloatScanned, Converter={StaticResource Vis}, ConverterParameter=!}">
+                                <TextBlock Text="&#xE74D;" Style="{StaticResource Glyph}" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,12"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                <TextBlock Text="Önce cihazdaki paketleri tara" Style="{StaticResource H2}" HorizontalAlignment="Center"/>
+                                <TextBlock Style="{StaticResource Muted}" TextAlignment="Center"
+                                           Text="Tarama hiçbir şeyi değiştirmez; yalnızca sistem uygulamalarını listeler ve her birinin kaldırılmasının ne kadar güvenli olduğunu gösterir."/>
+                            </StackPanel>
+
+                            <ListBox ItemsSource="{Binding DebloatRows}" SelectedItem="{Binding DebloatFocus}" AutomationProperties.Name="Sistem paketleri"
+                                     HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                                     PreviewKeyDown="PackageList_KeyDown" ToolTip="Boşluk tuşu seçili satırı işaretler"
+                                     Visibility="{Binding DebloatScanned, Converter={StaticResource Vis}}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="2,0">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                            <!-- Odak satırdadır (Boşluk işaretler); 400 onay kutusu ayrı sekme durağı olmaz -->
+                                            <CheckBox IsChecked="{Binding IsSelected}" Focusable="False" MinWidth="0" Padding="0" Margin="0,0,10,0" VerticalAlignment="Center"
+                                                      AutomationProperties.Name="{Binding Name}"/>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="13" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding Short}" FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                            </StackPanel>
+                                            <ContentControl Grid.Column="2" Content="{Binding}" ContentTemplate="{StaticResource LevelBadge}" Focusable="False" Margin="12,0,0,0"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock Text="{Binding DebloatEmptyText}" Style="{StaticResource Muted}" TextAlignment="Center" VerticalAlignment="Center" Margin="24,0"
+                                       Visibility="{Binding DebloatEmpty, Converter={StaticResource Vis}}"/>
+
+                            <Border Grid.Column="2" Style="{StaticResource Card}" Margin="0" Visibility="{Binding DebloatScanned, Converter={StaticResource Vis}}">
+                                <Grid>
+                                    <TextBlock Text="Ne işe yaradığını görmek için listeden bir paket seç." Style="{StaticResource Muted}"
+                                               Visibility="{Binding DebloatFocus, Converter={StaticResource Vis}, ConverterParameter=!}"/>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding DebloatFocus, Converter={StaticResource Vis}}">
+                                        <StackPanel DataContext="{Binding DebloatFocus}" Margin="0,0,6,0">
+                                            <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Mono}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource LevelBadge}" Focusable="False"/>
+                                                <Border CornerRadius="10" Padding="8,2" Margin="6,0,0,0" VerticalAlignment="Center" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                                        Visibility="{Binding ListText, Converter={StaticResource Vis}}">
+                                                    <TextBlock Text="{Binding ListText}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding StateText}" Style="{StaticResource Muted}" FontSize="13" Margin="0,0,0,12"
+                                                       Visibility="{Binding StateText, Converter={StaticResource Vis}}"/>
+                                            <TextBlock Text="{Binding Description}" Style="{StaticResource Body}"/>
+                                            <StackPanel Margin="0,14,0,0" Visibility="{Binding DependsText, Converter={StaticResource Vis}}">
+                                                <TextBlock Text="Şunlara bağlı" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding DependsText}" FontFamily="{StaticResource Mono}" FontSize="12" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                            </StackPanel>
+                                            <StackPanel Margin="0,14,0,0" Visibility="{Binding NeededByText, Converter={StaticResource Vis}}">
+                                                <TextBlock Text="Şunlar için gerekli" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding NeededByText}" FontFamily="{StaticResource Mono}" FontSize="12" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                            </StackPanel>
+                                            <TextBlock Style="{StaticResource Muted}" FontSize="12" LineHeight="17" Margin="0,16,0,0"
+                                                       Text="Açıklamalar Universal Android Debloater topluluk listesinden gelir (İngilizce)."/>
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Border>
+                        </Grid>
+
+                        <!-- Seçim + eylem -->
+                        <StackPanel Grid.Row="4" Margin="0,12,0,0" Visibility="{Binding DebloatScanned, Converter={StaticResource Vis}}">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Content="{Binding DebloatAction}" Style="{DynamicResource AccentButtonStyle}" Padding="28,8"
+                                        Command="{Binding DebloatCommand}" IsEnabled="{Binding CanDebloat}"
+                                        ToolTip="{Binding DebloatWhy}" ToolTipService.ShowOnDisabled="True"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="Görünenleri seç" Padding="14,6" Margin="0,0,8,0" Command="{Binding SelectVisibleCommand}"
+                                            ToolTip="Listedeki paketleri işaretler. Güvensiz ve listede olmayan paketler toplu seçime girmez."/>
+                                    <Button Content="Seçimi temizle" Padding="14,6" Margin="0,0,14,0" Command="{Binding ClearSelectionCommand}"/>
+                                    <TextBlock Text="{Binding SelectionText}" AutomationProperties.LiveSetting="Polite" FontSize="13" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                            </DockPanel>
+                            <TextBlock Text="{Binding DebloatWhy}" Style="{StaticResource Muted}" FontSize="13" HorizontalAlignment="Right" Margin="0,6,0,0"
+                                       Visibility="{Binding DebloatWhy, Converter={StaticResource Vis}}"/>
+                        </StackPanel>
                     </Grid>
 
                     <!-- ============ Geri yükleme ============ -->

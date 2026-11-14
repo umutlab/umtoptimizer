@@ -20,6 +20,7 @@ public static class AppPaths
 
     public static string Logs => Dir(Root, "logs");
     public static string Snapshots => Dir(Root, "android");
+    public static string Debloat => Dir(Root, "debloat");
     public static string AdbPathFile => Path.Combine(Dir(Root), "adb-path.txt");
     public static string AdbDir => Path.Combine(Root, "platform-tools");
 

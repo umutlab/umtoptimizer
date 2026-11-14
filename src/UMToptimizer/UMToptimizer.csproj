@@ -33,7 +33,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Resources\**\*.bat;Resources\**\*.ps1" LogicalName="%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Resources\**\*.bat;Resources\**\*.ps1;Resources\**\*.json" LogicalName="%(Filename)%(Extension)" />
     <Resource Include="Assets\UMToptimizer.ico" />
     <InternalsVisibleTo Include="UMToptimizer.Tests" />
   </ItemGroup>

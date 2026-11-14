@@ -62,6 +62,96 @@ public sealed class ProfileTests
         Assert.All(Profiles.For(Platform.Windows), p => Assert.Contains(p.Source, WindowsTweaks.Modes));
 }
 
+public sealed class DebloatTests
+{
+    [Fact]
+    public void Catalog_LoadsEmbeddedUadList()
+    {
+        Assert.True(Debloat.Catalog.Count > 5000);
+        var jelly = Debloat.Catalog["org.lineageos.jelly"];
+        Assert.Equal(Removal.Recommended, jelly.Removal);
+        Assert.Equal("Oem", jelly.List);
+        Assert.Contains("Browser", jelly.Description);
+        Assert.Equal(Removal.Unsafe, Debloat.Catalog["android.ext.shared"].Removal);
+        Assert.All(Debloat.Catalog.Keys, k => Assert.True(Debloat.IsSafePackage(k))); // adlar kabuğa tırnaksız gider
+    }
+
+    [Fact]
+    public void ParseCatalog_UnknownLevelIsTreatedAsUnsafe_AndBadNamesAreDropped()
+    {
+        const string json = """
+            { "com.ok": { "list": "Oem", "description": " d ", "removal": "Bilinmeyen", "dependencies": ["com.dep", "bad;rm -rf"], "neededBy": null },
+              "bad name; reboot": { "removal": "Recommended" },
+              "com.unlisted": { "removal": "Unlisted" } }
+            """;
+        var catalog = Debloat.ParseCatalog(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json)));
+        Assert.Equal(["com.ok", "com.unlisted"], catalog.Keys.Order());
+        Assert.Equal(Removal.Unsafe, catalog["com.ok"].Removal);
+        Assert.Equal(Removal.Unsafe, catalog["com.unlisted"].Removal);
+        Assert.Equal("d", catalog["com.ok"].Description);
+        Assert.Equal(["com.dep"], catalog["com.ok"].Dependencies);
+        Assert.Empty(catalog["com.ok"].NeededBy);
+    }
+
+    [Fact]
+    public void ParseScan_MarksPackagesMissingFromInstalledListAsRemoved()
+    {
+        var packages = Debloat.ParseScan(
+            "@@all\r\npackage:com.b\r\npackage:com.a\r\npackage:com.gone\r\nWARNING: linker noise\r\npackage:bad;name\r\n" +
+            "@@now\r\npackage:com.a\r\npackage:com.b\r\npackage:com.onlynow\r\n@@done\r\npackage:com.after\r\n");
+        Assert.Equal(
+            [new DevicePackage("com.a", false), new("com.b", false), new("com.gone", true), new("com.onlynow", false)],
+            packages);
+    }
+
+    [Theory]
+    [InlineData("com.android.chrome", true)]
+    [InlineData("android", true)]
+    [InlineData("com.a_b.C9", true)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    [InlineData("com.a;reboot", false)]
+    [InlineData("com.a b", false)]
+    [InlineData("-k", false)]
+    [InlineData("com.a$(id)", false)]
+    public void IsSafePackage_AllowsOnlyPackageCharacters(string? name, bool safe) => Assert.Equal(safe, Debloat.IsSafePackage(name));
+
+    [Theory]
+    [InlineData(false, "Success", true)]
+    [InlineData(false, "Failure [not installed for 0]", false)]
+    [InlineData(false, "Failure [DELETE_FAILED_INTERNAL_ERROR]", false)]
+    [InlineData(false, "", false)]
+    [InlineData(true, "Package com.a installed for user: 0", true)]
+    [InlineData(true, "android.content.pm.PackageManager$NameNotFoundException: Package com.a doesn't exist", false)]
+    [InlineData(true, "Success", false)]
+    public void IsSuccess_ReadsPmOutput(bool restore, string output, bool ok) => Assert.Equal(ok, Debloat.IsSuccess(restore, output));
+
+    [Fact]
+    public void Commands_TargetOnlyTheMainUser()
+    {
+        Assert.Equal("pm uninstall --user 0 com.a", Debloat.Command("com.a", restore: false));
+        Assert.Equal("cmd package install-existing --user 0 com.a", Debloat.Command("com.a", restore: true));
+    }
+
+    [Fact]
+    public async Task Run_RejectsUnsafeNames_BeforeTouchingTheDevice()
+    {
+        var e = await Assert.ThrowsAsync<UserException>(() => Debloat.RunAsync("SERIAL", ["com.ok", "com.a;reboot"], restore: false));
+        Assert.Contains("Geçersiz paket adı", e.Message);
+    }
+
+    [Fact]
+    public void History_IsPerDevice_AndEmptyWhenMissing()
+    {
+        Assert.Empty(Debloat.History("NOSUCHDEVICE"));
+        Assert.NotEqual(Debloat.HistoryFile("a:b"), Debloat.HistoryFile("a_b"));
+        Json.Write(Debloat.HistoryFile("PHONE1"), new DebloatHistory { Serial = "OTHER", Removed = { ["com.a"] = DateTimeOffset.Now } });
+        Assert.Empty(Debloat.History("PHONE1")); // başka cihazın kaydı kullanılmaz
+        Json.Write(Debloat.HistoryFile("PHONE1"), new DebloatHistory { Serial = "PHONE1", Removed = { ["com.a"] = DateTimeOffset.Now, ["bad name"] = DateTimeOffset.Now } });
+        Assert.Equal(["com.a"], Debloat.History("PHONE1").Keys);
+    }
+}
+
 public sealed class AdbParsingTests
 {
     [Fact]

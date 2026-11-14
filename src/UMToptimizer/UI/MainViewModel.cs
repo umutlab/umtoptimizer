@@ -33,6 +33,11 @@ public class Backend
     public virtual Task<ApplyResult> ApplyAndroidAsync(Profile p, string serial, Action<int, int> progress, Action<string> log, CancellationToken ct) => Android.ApplyAsync(p, serial, progress, log, ct);
     public virtual Task<int> RestoreAndroidAsync(string serial, Action<string> log, CancellationToken ct) => Android.RestoreAsync(serial, log, ct);
     public virtual Task RebootAsync(string serial, CancellationToken ct) => Adb.RebootAsync(serial, ct);
+    public virtual Task<List<AdbDevice>> ReconnectAsync(Action<string> log, CancellationToken ct) => Adb.ReconnectAsync(log, ct);
+    public virtual Task<List<DevicePackage>> ScanPackagesAsync(string serial, CancellationToken ct) => Debloat.ScanAsync(serial, ct);
+    public virtual Task<DebloatResult> DebloatAsync(string serial, IReadOnlyList<string> packages, bool restore, Action<int, int> progress, Action<string> log, CancellationToken ct) => Debloat.RunAsync(serial, packages, restore, progress, log, ct);
+    public virtual IReadOnlyDictionary<string, DateTimeOffset> DebloatHistory(string serial) => Debloat.History(serial);
+    public virtual UadEntry? DescribePackage(string package) => Debloat.Catalog.GetValueOrDefault(package);
     public virtual Task InstallAdbAsync(IProgress<double> progress, CancellationToken ct) => Adb.InstallAsync(progress, ct);
     public virtual void SaveAdbPath(string file) => Adb.SavePath(file);
     public virtual void OpenFolder(string path) => Process.Start(new ProcessStartInfo("explorer.exe") { ArgumentList = { path } })?.Dispose();
@@ -42,7 +47,7 @@ public class Backend
 /// Arayüzün tüm durumu ve eylemleri. Kural: hiçbir eylem dışarıya istisna sızdırmaz. Beklenen durumlar
 /// (<see cref="UserException"/>, iptal) sakin bir bildirim olur; beklenmeyenler günlüğe yazılır ve tek satırla bildirilir.
 /// </summary>
-public sealed class MainViewModel : Observable, IDisposable
+public sealed partial class MainViewModel : Observable, IDisposable
 {
     private readonly Backend _backend;
     private readonly SynchronizationContext? _ui = SynchronizationContext.Current;
@@ -70,12 +75,18 @@ public sealed class MainViewModel : Observable, IDisposable
         RestoreWindowsCommand = new(() => Safe(RestoreWindowsAsync));
         RestoreAndroidCommand = new(() => Safe(RestoreAndroidAsync));
         InstallAdbCommand = new(() => Safe(InstallAdbAsync));
+        ConnectDeviceCommand = new(() => Safe(ConnectDeviceAsync));
         CancelCommand = new(() => { try { _op?.Cancel(); } catch (ObjectDisposedException) { } });
         OpenLogsCommand = new(() => Try(() => _backend.OpenFolder(AppPaths.Logs)));
         HideActivityCommand = new(() => ActivityVisible = false);
         DismissNoticeCommand = new(() => Notice = null);
         ConfirmYesCommand = new(() => Answer(true));
         ConfirmNoCommand = new(() => Answer(false));
+        ScanPackagesCommand = new(() => Safe(ScanPackagesAsync));
+        DebloatCommand = new(() => Safe(DebloatActAsync));
+        SelectVisibleCommand = new(SelectVisible);
+        ClearSelectionCommand = new(ClearSelection);
+        _debloatLevel = DebloatLevels[0];
         UpdateState();
     }
 
@@ -88,6 +99,7 @@ public sealed class MainViewModel : Observable, IDisposable
     public Command RestoreWindowsCommand { get; }
     public Command RestoreAndroidCommand { get; }
     public Command InstallAdbCommand { get; }
+    public Command ConnectDeviceCommand { get; }
     public Command CancelCommand { get; }
     public Command OpenLogsCommand { get; }
     public Command HideActivityCommand { get; }
@@ -98,8 +110,8 @@ public sealed class MainViewModel : Observable, IDisposable
     // ---------------- Gezinme ve seçimler ----------------
 
     private int _page;
-    /// <summary>0 Genel bakış · 1 Windows · 2 Android · 3 Geri yükleme</summary>
-    public int Page { get => _page; set => Set(ref _page, Math.Clamp(value, 0, 3)); }
+    /// <summary>0 Genel bakış · 1 Windows · 2 Android · 3 Geri yükleme · 4 Debloat</summary>
+    public int Page { get => _page; set => Set(ref _page, Math.Clamp(value, 0, 4)); }
 
     public IReadOnlyList<Profile> WindowsProfiles { get; }
     public IReadOnlyList<Profile> AndroidProfiles { get; }
@@ -312,6 +324,8 @@ public sealed class MainViewModel : Observable, IDisposable
         RestoreAndroidWhy = !idle ? busy : Snapshot is null ? "Kayıtlı Android yedeği yok." :
             !Devices.Any(x => x.Ready && x.Serial == Snapshot.Serial) ? $"{Snapshot.Serial} bağlı ve yetkili olmalı." : null;
         CanRestoreAndroid = RestoreAndroidWhy is null;
+
+        UpdateDebloatState();
     }
 
     // ---------------- Eylemler ----------------
@@ -388,6 +402,23 @@ public sealed class MainViewModel : Observable, IDisposable
         await _backend.InstallAdbAsync(new InlineProgress(ReportProgress), ct);
         return new(NoticeKind.Success, "ADB kuruldu. Telefonu USB ile bağlayabilirsin.");
     });
+
+    /// <summary>"Cihazı bağla": listeyi elle yeniler, gerekirse ADB sunucusunu yeniden başlatır ve ne bulduğunu söyler.</summary>
+    private async Task ConnectDeviceAsync()
+    {
+        if (IsBusy || AdbMissing) return;
+        List<AdbDevice>? found = null;
+        await RunAsync("Cihaz aranıyor", cancellable: true, async ct =>
+        {
+            found = await _backend.ReconnectAsync(Log, ct);
+            return found.FirstOrDefault(d => d.Ready) is { } ready ? new(NoticeKind.Success, $"{ready.Name} bağlandı.")
+                : found.Count > 0 ? new Notice(NoticeKind.Warning, "Telefon bulundu ama izin bekliyor. Telefonun ekranını aç ve \"USB hata ayıklamaya izin ver\" penceresini onayla, sonra tekrar dene.")
+                : new(NoticeKind.Warning, "Cihaz bulunamadı. Telefonda Geliştirici seçenekleri > USB hata ayıklama açık olmalı; veri aktarabilen bir kablo kullan ve USB modunu \"Dosya aktarımı\" yap.");
+        });
+        if (found is null || _life.IsCancellationRequested) return;
+        OnDevices(_backend.CurrentAdb(), found);
+        if (found.Any(d => d.Ready)) ActivityVisible = false;
+    }
 
     /// <summary>Görünüm dosya seçiciyi gösterir, seçilen yolu buraya verir.</summary>
     public void UseAdb(string file) => Safe(async () =>

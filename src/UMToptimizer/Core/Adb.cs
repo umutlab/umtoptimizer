@@ -205,6 +205,28 @@ public static partial class Adb
         return AdbDevice.ParseAll(r.Output);
     }
 
+    /// <summary>
+    /// Elle "cihazı bağla": listeyi yeniden sorar; hazır cihaz yoksa ADB sunucusunu yeniden başlatır (takılı kalmış
+    /// sunucu ve bekleyen USB izni penceresi için bilinen çare) ve USB'nin yeniden taranması için birkaç saniye bekler.
+    /// </summary>
+    public static async Task<List<AdbDevice>> ReconnectAsync(Action<string>? log = null, CancellationToken ct = default)
+    {
+        var list = await DevicesAsync(ct);
+        if (list.Any(d => d.Ready)) return list;
+
+        log?.Invoke("Hazır cihaz bulunamadı; ADB sunucusu yeniden başlatılıyor…");
+        await RunAsync(["kill-server"], ct: ct);
+        await RunAsync(["start-server"], ct: ct);
+        for (var attempt = 0; attempt < 6; attempt++)
+        {
+            list = await DevicesAsync(ct);
+            if (list.Any(d => d.Ready)) break;
+            log?.Invoke(list.Count == 0 ? "Cihaz bekleniyor…" : "Telefondaki USB hata ayıklama izni bekleniyor…");
+            await Task.Delay(1000, ct);
+        }
+        return list;
+    }
+
     public static async Task RebootAsync(string serial, CancellationToken ct = default)
     {
         var r = await RunAsync(["-s", Checked(serial), "reboot"], ct: ct);
@@ -240,6 +262,10 @@ public static partial class Adb
                     if (p is not null)
                     {
                         await using var _ = ct.Register(() => Kill(p));
+                        // Güvenlik ağı: akış sessiz kalırsa (bazı sürücü/sunucu durumlarında değişiklik bildirilmiyor) liste
+                        // yine de düzenli sorulur; aksi hâlde yeni takılan cihaz ancak uygulama yeniden açılınca görünürdü.
+                        using var pollStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        var poll = PollAsync(onChange, pollStop.Token);
                         try
                         {
                             var stream = p.StandardOutput.BaseStream;
@@ -252,7 +278,12 @@ public static partial class Adb
                                 onChange(AdbDevice.ParseAll(Encoding.UTF8.GetString(body)));
                             }
                         }
-                        finally { Kill(p); }
+                        finally
+                        {
+                            Kill(p);
+                            pollStop.Cancel();
+                            await poll.ConfigureAwait(false);
+                        }
                     }
                 }
                 else onChange([]);
@@ -266,6 +297,24 @@ public static partial class Adb
                 try { Refresh(); onChange([]); } catch (Exception inner) { CrashLog.Write("Adb.WatchAsync.onChange", inner); }
                 try { await Task.Delay(3000, ct); } catch (OperationCanceledException) { return; }
             }
+        }
+    }
+
+    /// <summary>İzleme akışına ek olarak listeyi 10 saniyede bir sorar. Asla istisna fırlatmaz; iptal edilince döner.</summary>
+    private static async Task PollAsync(Action<IReadOnlyList<AdbDevice>> onChange, CancellationToken ct)
+    {
+        while (true)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
+                using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                limit.CancelAfter(TimeSpan.FromSeconds(20));
+                onChange(await DevicesAsync(limit.Token).ConfigureAwait(false));
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
+            catch (Exception e) when (e is UserException or OperationCanceledException) { /* geçici; bir sonraki turda yeniden denenir */ }
+            catch (Exception e) { CrashLog.Write("Adb.PollAsync", e); }
         }
     }
 
