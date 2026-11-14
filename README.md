@@ -1,8 +1,10 @@
 <div align="center">
 
-# UMToptimizer 4
+# UMToptimizer 4.1
 
 **Windows ve Android (ADB) için açık kaynak optimizasyon kontrol merkezi.**
+
+Güncel sürüm: [**4.1.0**](https://github.com/umutlab/umtoptimizer/releases/tag/v4.1.0)
 
 UMToptimizer Web : https://umtoptimizer.vercel.app/
 
@@ -14,8 +16,8 @@ UMToptimizer Web : https://umtoptimizer.vercel.app/
 
 [**Releases**](https://github.com/umutlab/umtoptimizer/releases/latest) sayfasından indirin:
 
-- `UMToptimizer-Setup-<sürüm>.exe`: kurulum sihirbazı ("yalnızca benim için" seçilirse yönetici izni istemez).
-- `UMToptimizer-<sürüm>-portable.exe`: kurulum gerektirmeyen tek dosya.
+- `UMToptimizer-Setup-4.1.0.exe`: kurulum sihirbazı ("yalnızca benim için" seçilirse yönetici izni istemez).
+- `UMToptimizer-4.1.0-portable.exe`: kurulum gerektirmeyen tek dosya.
 
 .NET kurulu olması gerekmez (self-contained). Windows 10 1809 ve üzeri, x64.
 Dosyalar imzalı değildir; Windows SmartScreen "bilinmeyen yayımcı" uyarısı gösterebilir ("Ek bilgi → Yine de çalıştır").
@@ -67,7 +69,20 @@ Cihaz takılınca otomatik algılanır: uygulama `adb track-devices` akışını
 Telefon yine de görünmezse Android ve Debloat sayfalarındaki **Cihazı bağla** düğmesi listeyi elle yeniler; hazır cihaz bulamazsa ADB sunucusunu yeniden başlatır
 ve sonucu söyler (bağlandı / telefonda izin bekliyor / bulunamadı).
 
-## Sürüm 4'te ne değişti?
+## Sürüm 4.1.0'da ne değişti?
+
+| Konu | Sürüm 4.0.0 | Sürüm 4.1.0 |
+|---|---|---|
+| Gereksiz sistem uygulamaları | Kaldırılamıyordu | **Debloat (Android)** sayfası: tara, güvenlik düzeyine göre süz, kaldır |
+| Kaldırılan uygulamayı geri getirme | Yoktu | "Kaldırılmış" görünümünden tek tıkla geri getirme; bu uygulamayla kaldırılanlar tarihleriyle listelenir |
+| Paket bilgisi | Yoktu | 5.399 paket için açıklama ve güvenlik düzeyi (Universal Android Debloater NG listesi) |
+| Cihaz algılama | Yalnızca `adb track-devices` akışı; akış sessiz kalırsa cihaz ancak uygulama yeniden açılınca görünüyordu | Akışa ek olarak 10 saniyede bir yoklama |
+| Cihaz görünmezse | Uygulamayı kapatıp açmak gerekiyordu | **Cihazı bağla** düğmesi: listeyi yeniler, gerekirse ADB sunucusunu yeniden başlatır |
+| Testler | 91 xUnit testi | 120 xUnit testi |
+
+Ayrıntılar yukarıdaki [Debloat (Android)](#debloat-android) ve [Cihaz algılama](#cihaz-algılama) bölümlerinde; denenmeyen kısımlar [Bilinen sınırlamalar](#bilinen-sınırlamalar) bölümünde.
+
+## Sürüm 4.0.0'da ne değişti?
 
 Sürüm 3'te her işlem (Windows profili, Android profili, ADB indirme, geri yükleme) başlar başlamaz
 **"Object reference not set to an instance of an object"** penceresiyle düşüyor ve düğmeler kilitli kalıyordu:
