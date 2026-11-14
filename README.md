@@ -202,7 +202,7 @@ Sistemi değiştiren her komut `--yes` olmadan çalışmaz; yalnızca ne yapaca�
 
 ```powershell
 winget install Microsoft.DotNet.SDK.10 JRSoftware.InnoSetup   # bir kez
-.\build.ps1                    # test → publish → dist\UMToptimizer-Setup-4.0.0.exe + .sha256
+.\build.ps1                    # test → publish → dist\UMToptimizer-Setup-4.1.0.exe + .sha256
 .\build.ps1 -NoSetup           # Inno Setup olmadan: test → publish\UMToptimizer.exe
 ```
 

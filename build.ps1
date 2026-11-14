@@ -1,9 +1,9 @@
 ﻿# UMToptimizer 4 — tek komutla test et + derle + setup üret
-#   .\build.ps1                 → dist\UMToptimizer-Setup-4.0.0.exe (+ .sha256)
+#   .\build.ps1                 → dist\UMToptimizer-Setup-4.1.0.exe (+ .sha256)
 #   .\build.ps1 -Version 4.1.0
 #   .\build.ps1 -NoSetup        → yalnızca test + publish (Inno Setup gerekmez)
 # Gereksinim: .NET 10 SDK, Inno Setup 6   (winget install Microsoft.DotNet.SDK.10 JRSoftware.InnoSetup)
-param([string]$Version = '4.0.0', [switch]$SkipTests, [switch]$NoSetup)
+param([string]$Version = '4.1.0', [switch]$SkipTests, [switch]$NoSetup)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Geçersiz sürüm: $Version (örnek: 4.0.0)" }

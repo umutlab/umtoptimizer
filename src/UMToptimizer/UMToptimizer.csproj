@@ -11,7 +11,7 @@
     <RootNamespace>UMToptimizer</RootNamespace>
     <StartupObject>UMToptimizer.Program</StartupObject>
     <ApplicationIcon>Assets\UMToptimizer.ico</ApplicationIcon>
-    <Version>4.0.0</Version>
+    <Version>4.1.0</Version>
     <Authors>UMToptimizer contributors</Authors>
     <Description>Windows ve Android (ADB) optimizasyon kontrol merkezi</Description>
     <!-- WPF Fluent (ThemeMode) API'si .NET 10'da hâlâ "experimental" işaretli. -->
