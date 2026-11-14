@@ -25,6 +25,7 @@ $Data = $DataRoot
 $Backup = Join-Path $Data 'backup.json'
 $Logs = Join-Path $Data 'logs'
 $HostsFile = Join-Path $env:WINDIR 'System32\drivers\etc\hosts'
+$Dism = Join-Path $env:WINDIR 'System32\Dism.exe'
 $HostsBegin = '# >>> UMToptimizer Adobe block list'
 $HostsEnd = '# <<< UMToptimizer'
 $ValidKinds = 'String', 'ExpandString', 'Binary', 'DWord', 'QWord', 'MultiString'
@@ -155,6 +156,20 @@ function Step([string]$What, [scriptblock]$Do) {
     try { & $Do | Out-Null; Log "✓ $What" } catch { Log "✗ ${What}: $($_.Exception.Message)" }
 }
 
+# Dış programı süre sınırıyla çalıştırır ve çıkış kodunu döndürür; süre dolarsa programı (alt süreçleriyle) durdurup fırlatır.
+# "Start-Process -Wait" KULLANILMAZ: o, programın başlattığı TÜM alt süreçler de kapanana kadar bekler. OneDrive/Edge
+# kaldırıcıları arka planda süreç bırakır, DISM ise bekleyen bir Windows güncellemesi varken süresiz bekleyebilir;
+# ikisi de profili günlüğe tek satır yazmadan kilitliyordu.
+function Invoke-Timed([string]$File, [string]$Arguments, [int]$TimeoutSec = 300) {
+    $p = Start-Process -FilePath $File -ArgumentList $Arguments -PassThru -WindowStyle Hidden -ErrorAction Stop
+    $null = $p.Handle   # tutamaç şimdi alınmazsa süreç bittikten sonra ExitCode boş döner
+    if (-not $p.WaitForExit($TimeoutSec * 1000)) {
+        & (Join-Path $env:WINDIR 'System32\taskkill.exe') /PID $p.Id /T /F 2>&1 | Out-Null
+        throw "$TimeoutSec saniyede bitmedi; durduruldu, sonraki adıma geçiliyor."
+    }
+    $p.ExitCode
+}
+
 # ============================== AYAR TABLOLARI ==============================
 # Sütunlar: Seviye (S=Standart, A=Agresif) | Yol | Ad | Değer
 # Tür değerden çıkarılır: [int] → DWord, [string] → String, [byte[]] → Binary
@@ -264,7 +279,14 @@ function Read-Reg($Path, $Name) {
 function Set-ServiceStart($Name, $Start) {
     if (-not (Get-Service -Name $Name -ErrorAction SilentlyContinue)) { return }
     $out = & sc.exe config $Name start= $Start 2>&1
-    if ($LASTEXITCODE -eq 0) { Log "✓ Hizmet $Name → $Start" } else { Log "✗ Hizmet ${Name}: $out" }
+    $ok = $LASTEXITCODE -eq 0
+    if (-not $ok) {
+        # sc.exe önce başlangıç türünü, sonra "gecikmeli başlatma" bayrağını yazar. Korumalı hizmetlerde (DoSvc) ikincisi
+        # reddedilir ama tür değişmiştir; gerçek duruma bakılır ki başarılı ayar hata diye gösterilmesin.
+        $want = @{ disabled = 'Disabled'; demand = 'Manual'; auto = 'Auto' }[$Start]
+        $ok = (Get-CimInstance Win32_Service -Filter "Name='$Name'" -ErrorAction SilentlyContinue).StartMode -eq $want
+    }
+    if ($ok) { Log "✓ Hizmet $Name → $Start" } else { Log "✗ Hizmet ${Name}: $out" }
 }
 
 function Remove-Apps([string[]]$Names) {
@@ -416,12 +438,24 @@ function Apply-Profile([bool]$Aggressive) {
         Step 'IPv6 bağdaştırıcı bağlamaları kapatıldı' { Get-NetAdapterBinding -ComponentID ms_tcpip6 -ErrorAction Stop | Disable-NetAdapterBinding -ComponentID ms_tcpip6 -ErrorAction Stop }
         Step 'Teredo kapatıldı' { netsh.exe interface teredo set state disabled }
         Step 'Ayrılmış depolama kapatıldı' { Set-WindowsReservedStorageState -State Disabled -ErrorAction Stop }
-        Step 'Recall kapatıldı' { Disable-WindowsOptionalFeature -FeatureName Recall -Online -NoRestart -ErrorAction Stop }
+        Log 'Recall kapatılıyor (en çok 5 dakika)…'
+        Step 'Recall kapatıldı' {
+            $code = Invoke-Timed $Dism '/Online /Disable-Feature /FeatureName:Recall /NoRestart /Quiet' 300
+            # 0x800F080C: bu Windows sürümünde Recall özelliği yok (zaten kapalı sayılır); 3010: yeniden başlatma gerekli
+            if ($code -notin 0, 3010, 0x800F080C) { throw ('DISM hata kodu 0x{0:X8}' -f $code) }
+        }
+        Log 'Hazır uygulamalar kaldırılıyor…'
         Remove-Apps $OptionalApps
         $oneDrive = Join-Path $env:WINDIR 'System32\OneDriveSetup.exe'
-        if (Test-Path $oneDrive) { Step 'OneDrive kaldırıldı' { Start-Process $oneDrive '/uninstall' -Wait } }
+        if (Test-Path $oneDrive) {
+            Log 'OneDrive kaldırılıyor (en çok 3 dakika)…'
+            Step 'OneDrive kaldırıldı' { Invoke-Timed $oneDrive '/uninstall' 180 }
+        }
         $edgeSetup = Get-ChildItem (Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\*\Installer\setup.exe') -ErrorAction SilentlyContinue | Select-Object -Last 1
-        if ($edgeSetup) { Step 'Edge kaldırma başlatıldı' { Start-Process $edgeSetup.FullName '--uninstall --system-level --force-uninstall --delete-profile' -Wait } }
+        if ($edgeSetup) {
+            Log 'Edge kaldırılıyor (en çok 5 dakika)…'
+            Step 'Edge kaldırma başlatıldı' { Invoke-Timed $edgeSetup.FullName '--uninstall --system-level --force-uninstall --delete-profile' 300 }
+        }
         Stop-Process -Name 'logi_download_assistant' -Force -ErrorAction SilentlyContinue
         if (-not (Test-HostsBlock)) {
             Step 'Adobe engelleme listesi hosts dosyasına eklendi' {
@@ -444,8 +478,8 @@ function Apply-Profile([bool]$Aggressive) {
     # O temizliği uygulama kullanıcının kendi yetkisiyle yapar; sistem geçici dosyalarını Disk Temizleme halleder.
     # Tam yol: Start-Process yalın adı çalışma klasöründe de arar.
     Step 'Disk Temizleme arka planda başlatıldı' { Start-Process (Join-Path $env:WINDIR 'System32\cleanmgr.exe') '/d C: /VERYLOWDISK' -WindowStyle Hidden }
-    Log 'DISM bileşen temizliği çalışıyor (birkaç dakika sürebilir)…'
-    Step 'DISM bileşen temizliği' { Dism.exe /Online /Cleanup-Image /StartComponentCleanup /Quiet }
+    Log 'DISM bileşen temizliği çalışıyor (birkaç dakika sürebilir, en çok 30 dakika)…'
+    Step 'DISM bileşen temizliği' { Invoke-Timed $Dism '/Online /Cleanup-Image /StartComponentCleanup /Quiet' 1800 }
     Log "Profil tamamlandı. Yedek: $Backup"
 }
 

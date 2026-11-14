@@ -4,7 +4,7 @@
 
 **Windows ve Android (ADB) için açık kaynak optimizasyon kontrol merkezi.**
 
-Güncel sürüm: [**4.1.0**](https://github.com/umutlab/umtoptimizer/releases/tag/v4.1.0)
+Güncel sürüm: [**4.1.1**](https://github.com/umutlab/umtoptimizer/releases/tag/v4.1.1)
 
 UMToptimizer Web : https://umtoptimizer.vercel.app/
 
@@ -16,8 +16,8 @@ UMToptimizer Web : https://umtoptimizer.vercel.app/
 
 [**Releases**](https://github.com/umutlab/umtoptimizer/releases/latest) sayfasından indirin:
 
-- `UMToptimizer-Setup-4.1.0.exe`: kurulum sihirbazı ("yalnızca benim için" seçilirse yönetici izni istemez).
-- `UMToptimizer-4.1.0-portable.exe`: kurulum gerektirmeyen tek dosya.
+- `UMToptimizer-Setup-4.1.1.exe`: kurulum sihirbazı ("yalnızca benim için" seçilirse yönetici izni istemez).
+- `UMToptimizer-4.1.1-portable.exe`: kurulum gerektirmeyen tek dosya.
 
 .NET kurulu olması gerekmez (self-contained). Windows 10 1809 ve üzeri, x64.
 Dosyalar imzalı değildir; Windows SmartScreen "bilinmeyen yayımcı" uyarısı gösterebilir ("Ek bilgi → Yine de çalıştır").
@@ -68,6 +68,21 @@ Paket açıklamaları ve güvenlik düzeyleri [Universal Android Debloater Next 
 Cihaz takılınca otomatik algılanır: uygulama `adb track-devices` akışını dinler, buna ek olarak listeyi 10 saniyede bir yeniden sorar.
 Telefon yine de görünmezse Android ve Debloat sayfalarındaki **Cihazı bağla** düğmesi listeyi elle yeniler; hazır cihaz bulamazsa ADB sunucusunu yeniden başlatır
 ve sonucu söyler (bağlandı / telefonda izin bekliyor / bulunamadı).
+
+## Sürüm 4.1.1'de ne değişti?
+
+Windows **Agresif** profili bazı bilgisayarlarda "Ayrılmış depolama" adımından sonra ilerlemiyor, günlük o satırda kalıyordu.
+
+| Konu | Sürüm 4.1.0 | Sürüm 4.1.1 |
+|---|---|---|
+| Recall kapatma (DISM) | Süre sınırı yoktu; bekleyen bir Windows güncellemesi varken süresiz bekleyebiliyordu | En çok 5 dakika; bitmezse durdurulur, günlüğe ✗ yazılır ve sıradaki adıma geçilir |
+| OneDrive / Edge kaldırma | `Start-Process -Wait` kaldırıcının arkada bıraktığı süreçleri de bekliyordu; hiç bitmeyebiliyordu | Yalnızca kaldırıcının kendisi beklenir; en çok 3 / 5 dakika |
+| DISM bileşen temizliği | Süre sınırı yoktu | En çok 30 dakika |
+| Günlük | Adım ancak bitince satır yazıyordu; uzun adımda ekranda bir önceki satır kalıyordu | Uzun adımlar başlamadan önce "… kaldırılıyor" satırı yazılır |
+| `DoSvc` hizmeti | Başlangıç türü değiştiği halde `ChangeServiceConfig2 … FAILED 5` hatası gösteriliyordu | Hizmetin gerçek durumuna bakılır; tür değiştiyse ✓ gösterilir |
+
+"Ayrılmış depolama kapatıldı" adımı, Windows ayrılmış depolamayı kullanırken (örneğin bekleyen güncelleme varken) yine ✗ verebilir; bu zararsızdır ve profil devam eder.
+Bu düzeltme betik testleriyle doğrulandı; Agresif profil bu sürümle gerçek bir sistemde baştan sona yeniden çalıştırılmadı.
 
 ## Sürüm 4.1.0'da ne değişti?
 
@@ -143,14 +158,14 @@ Sürüm 4'te eklenenler (bağımsız bir güvenlik incelemesinin bulguları dahi
 
 ```powershell
 dotnet test tests\UMToptimizer.Tests                                               # 120 xUnit testi
-powershell -NoProfile -ExecutionPolicy Bypass -File tests\WindowsScript.Tests.ps1   # 45 betik denetimi
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\WindowsScript.Tests.ps1   # 49 betik denetimi
 ```
 
 | Dosya | Kapsam |
 |---|---|
 | `CoreTests.cs` | Profil yükleme, `adb devices` ayrıştırma, seri doğrulama, geri alınabilir komut tanıma, ayar çıktısı ayrıştırma, geri yükleme komutu ve enjeksiyon reddi, bozuk yedek dosyaları, komut satırı (`--serial` dahil), eksik okuma reddi, yedek dosya adları, geçici dosya temizliği (junction dahil), betik özeti sabitlemesi ve kurcalanmış betiğin gerçek PowerShell'de reddi. **Debloat:** gömülü listenin yüklenmesi, tanınmayan düzeyin Güvensiz sayılması, paket taraması ayrıştırma, `pm` çıktısından başarı/başarısızlık, paket adı doğrulama ve enjeksiyon reddi, cihaz başına geçmiş |
 | `ViewModelTests.cs` | Beklenmeyen istisna → sakin bildirim + düğmeler açık; `UserException` → uyarı; UAC reddi → bilgi; onay reddi → hiçbir şey değişmez; cihaz yokken düğme kapalı + nedeni; günlük/ilerleme toplu güncelleme; iptal; geri yükleme koşulları. **Pencere testi:** gerçek pencere açılır, tema anahtarları doğrulanır, "Profili uygula → onayla → işlem" akışı sahte arka uçla baştan sona çalıştırılır; Debloat sayfası gerçek satırlarla çizilir. **Debloat:** varsayılan süzgeç, arama, toplu seçimin Güvensiz paketleri atlaması, kaldır → geri getir döngüsü, riskli seçimde uyarı, cihazın reddettiği paketler, cihaz çıkınca listenin temizlenmesi. **Cihazı bağla:** izleyicinin kaçırdığı telefonun bulunması |
-| `WindowsScript.Tests.ps1` | Betiği gerçek sisteme dokunmadan, `HKCU:\Software\UMToptimizerTest` ve geçici klasörle çalıştırır: yedek → uygula → ikinci yedek ezilmez → kurcalanmış yedek → geri yükle → hosts filtresi → günlük yolu → HKCU yönlendirmesi → bağlantı güvenliği → DACL değiştirme → atomik yedek → bozuk yedek → sahiplik denetimi |
+| `WindowsScript.Tests.ps1` | Betiği gerçek sisteme dokunmadan, `HKCU:\Software\UMToptimizerTest` ve geçici klasörle çalıştırır: yedek → uygula → ikinci yedek ezilmez → kurcalanmış yedek → geri yükle → hosts filtresi → günlük yolu → HKCU yönlendirmesi → bağlantı güvenliği → DACL değiştirme → atomik yedek → bozuk yedek → sahiplik denetimi → dış programlarda süre sınırı |
 
 ## Bilinen sınırlamalar
 
@@ -217,7 +232,7 @@ Sistemi değiştiren her komut `--yes` olmadan çalışmaz; yalnızca ne yapaca�
 
 ```powershell
 winget install Microsoft.DotNet.SDK.10 JRSoftware.InnoSetup   # bir kez
-.\build.ps1                    # test → publish → dist\UMToptimizer-Setup-4.1.0.exe + .sha256
+.\build.ps1                    # test → publish → dist\UMToptimizer-Setup-4.1.1.exe + .sha256
 .\build.ps1 -NoSetup           # Inno Setup olmadan: test → publish\UMToptimizer.exe
 ```
 

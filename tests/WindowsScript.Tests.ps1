@@ -129,6 +129,19 @@ try {
     Write-Host '13) Sahiplik denetimi'
     Check 'kendi dosyamız güvenilir sayılır' (Test-TrustedOwner $Backup)
     Check 'olmayan yol güvenilir sayılmaz' (-not (Test-TrustedOwner "$tmp\yok-boyle-bir-sey"))
+
+    Write-Host '14) Dış programlar süre sınırıyla çalışır (takılan adım profili kilitlemez)'
+    $ps = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    Check 'biten programın çıkış kodu döner' ((Invoke-Timed $ps '-NoProfile -Command exit 7' 60) -eq 7)
+    # OneDrive/Edge kaldırıcıları gibi arka planda süreç bırakıp çıkan program: bırakılan süreç beklenmez
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $code = Invoke-Timed $ps '-NoProfile -Command "Start-Process ping.exe ''-n 30 127.0.0.1'' -WindowStyle Hidden; exit 0"' 60
+    Check 'arka planda süreç bırakan program beklenmez' ($code -eq 0 -and $sw.Elapsed.TotalSeconds -lt 20)
+    $sw.Restart(); $threw = $false
+    try { Invoke-Timed $ps '-NoProfile -Command Start-Sleep 120' 3 | Out-Null } catch { $threw = $true }
+    Check 'takılan program süre dolunca durdurulur ve hata bildirilir' ($threw -and $sw.Elapsed.TotalSeconds -lt 30)
+    Step 'takılan adım' { Invoke-Timed $ps '-NoProfile -Command Start-Sleep 120' 2 } 6>$null
+    Check 'takılan adım günlüğe ✗ olarak yazılır, betik devam eder' ((Get-Content $LogPath -Raw) -match '✗ takılan adım')
 }
 finally {
     Remove-Item $K -Recurse -Force -ErrorAction SilentlyContinue

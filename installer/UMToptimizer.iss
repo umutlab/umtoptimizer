@@ -2,7 +2,7 @@
 ; Derleme: ..\build.ps1  (önce dotnet publish, sonra ISCC çalıştırır)
 
 #ifndef AppVersion
-  #define AppVersion "4.1.0"
+  #define AppVersion "4.1.1"
 #endif
 #define AppName "UMToptimizer"
 #define AppExe  "UMToptimizer.exe"
